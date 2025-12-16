@@ -121,8 +121,6 @@ def log_answer(student_id, question_id, is_correct):
     conn.commit()
     conn.close()
     
-student_id = get_or_create_student(student_key)
-
 if st.button("解答する"):
     st.session_state.answered = True
     is_correct = (choice == p["correct"])
@@ -131,6 +129,13 @@ if st.button("解答する"):
         p["id"],
         is_correct
     )
+    
+student_id = get_or_create_student(student_key)
+log_answer(
+    student_id,
+    p["id"],
+    is_correct
+)
 
 
 def get_stats():
@@ -292,7 +297,10 @@ def generate_ai_problems(text, n=5):
 
     response = model.generate_content(
         [system_prompt, prompt],
-        generation_config={"temperature": 0.2,"response_mime_type": "application/json"}
+        generation_config={
+            "temperature": 0.1,
+            "max_output_tokens": 2000
+        }
     )
 
     return safe_json_load(response.text)
@@ -402,24 +410,26 @@ def main():
             st.success("資料を読み込みました")
 
             if st.button("AI問題を生成"):
-                with st.spinner("問題生成中..."):
-                    problems = generate_ai_problems(st.session_state.text)
-                    save_questions(st.session_state.material_id, problems)
-                    conn = sqlite3.connect(DB_FILE)
-                    st.session_state.problems = pd.read_sql("""
-                        SELECT * FROM questions
-                        WHERE material_id = ?
-                    """, conn, params=(st.session_state.material_id,)).to_dict("records")
-                    conn.close()
+                try:
+                    with st.spinner("問題生成中..."):
+                        problems = generate_ai_problems(st.session_state.text)
+                        save_questions(st.session_state.material_id, problems)
 
-                st.session_state.idx = 0
-                st.success("問題を生成しました")
-                st.rerun()
+                        conn = sqlite3.connect(DB_FILE)
+                        st.session_state.problems = pd.read_sql("""
+                            SELECT * FROM questions
+                            WHERE material_id = ?
+                        """, conn, params=(st.session_state.material_id,)).to_dict("records")
+                        conn.close()
 
+                    st.session_state.idx = 0
+                    st.success("問題を生成しました")
+                    st.rerun()
 
                 except Exception as e:
                     st.error("❌ 問題生成に失敗しました")
                     st.exception(e)
+
 def save_questions(material_id, problems):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -468,10 +478,10 @@ def save_questions(material_id, problems):
 
         choice = st.radio(
             "選択肢",
-            options=list(p["choices"].keys()),
-            format_func=lambda x: f"{x}: {p['choices'][x]}",
-            key=f"choice_{st.session_state.idx}"
-        )
+            st.session_state.problems = pd.read_sql(...).to_dict("records")
+            for p in st.session_state.problems:
+                p["choices"] = json.loads(p["choices_json"])
+
 
         # --- 解答する ---
         if not st.session_state.answered:
@@ -479,8 +489,10 @@ def save_questions(material_id, problems):
                 st.session_state.answered = True
                 st.session_state.is_correct = (choice == p["correct"])
                 topic = p.get("topic", "未分類")
-                log_result(topic, st.session_state.is_correct)
-
+                student_id = get_or_create_student(student_key)
+                log_answer(
+                    student_id, p["id"], st.session_state.is_correct
+                )
 
 
         # --- 解答後表示 ---
@@ -526,6 +538,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
