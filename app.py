@@ -471,6 +471,10 @@ def main():
      
     # ---------- 問題 ----------
     with tab2:
+        if not student_key:
+            st.warning("学籍番号またはニックネームを入力してください")
+            st.stop()
+
         # --- idx の安全化 ---
         if st.session_state.idx < 0:
             st.session_state.idx = 0
@@ -516,20 +520,21 @@ def main():
         st.markdown(p["question"])
 
         # --- choices を dict に変換（1問分） ---
-        p["choices"] = json.loads(p["choices_json"])
+        choices = json.loads(p["choices_json"])
 
         choice = st.radio(
             "選択肢",
-            options=list(p["choices"].keys()),
-            format_func=lambda x: f"{x}: {p['choices'][x]}",
+            options=list(choices.keys()),
+            format_func=lambda x: f"{x}: {choices[x]}",
             key=f"choice_{st.session_state.idx}"
         )
 
 
         # --- 解答する ---
-        if not st.session_state.answered:
+        answered = st.session_state.answered_idx.get(st.session_state.idx, False)
+        if not answered:
             if st.button("解答する"):
-                st.session_state.answered = True
+                st.session_state.answered_idx[st.session_state.idx] = True
                 st.session_state.is_correct = (choice == p["correct"])
                 topic = p.get("topic", "未分類")
                 student_id = get_or_create_student(student_key)
@@ -551,7 +556,6 @@ def main():
             # --- 次の問題へ ---
             if st.button("次の問題へ"):
                 st.session_state.idx += 1
-                st.session_state.answered = False
                 st.rerun()
 
 
@@ -581,6 +585,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
