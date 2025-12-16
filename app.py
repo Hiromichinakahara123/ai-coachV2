@@ -471,6 +471,13 @@ def main():
      
     # ---------- 問題 ----------
     with tab2:
+        # --- idx の安全化 ---
+        if st.session_state.idx < 0:
+            st.session_state.idx = 0
+
+        if st.session_state.idx >= len(st.session_state.problems):
+            st.session_state.idx = 0
+
         if not st.session_state.problems and "material_id" in st.session_state:
             conn = sqlite3.connect(DB_FILE)
             df = pd.read_sql(
@@ -487,7 +494,7 @@ def main():
             
         if not st.session_state.problems:
             st.info("問題がまだありません")
-            
+            st.stop()
 
     # --- 全問終了 ---
         if st.session_state.problems and st.session_state.idx >= len(st.session_state.problems):
@@ -574,6 +581,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
