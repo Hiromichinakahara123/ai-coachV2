@@ -471,9 +471,24 @@ def main():
      
     # ---------- 問題 ----------
     with tab2:
+        if not st.session_state.problems and "material_id" in st.session_state:
+            conn = sqlite3.connect(DB_FILE)
+            df = pd.read_sql(
+                """
+                SELECT * FROM questions
+                WHERE material_id = ?
+                ORDER BY id
+                """,
+                conn,
+                params=(st.session_state.material_id,)
+            )
+            conn.close()
+            st.session_state.problems = df.to_dict("records")
+            
         if not st.session_state.problems:
             st.info("問題がまだありません")
-            return
+        else:
+    
 
     # --- 全問終了 ---
         if st.session_state.idx >= len(st.session_state.problems):
@@ -559,6 +574,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
