@@ -231,24 +231,21 @@ def safe_json_load(text: str):
 def generate_ai_problems(text, n=5):
     model = genai.GenerativeModel("gemini-flash-latest")
 
-    response = model.generate_content(
-        [
-            {
-                "role": "system",
-                "parts": ["あなたは薬剤師国家試験対策問題を作成する教育AIです。"]
-            },
-            {
-                "role": "user",
-                "parts": [f"""
-以下の資料から {n} 問の五肢択一問題を作成してください。
+    prompt = f"""
+あなたは薬剤師国家試験対策問題を作成する教育AIです。
 
-【厳守】
-・資料の内容のみから作問
-・5択単一正解
+【厳守事項】
+・提供資料の内容のみから作問する
+・薬剤師国家試験形式（5択単一選択）
+・正解は必ず1つ
 ・JSONのみ出力
-・改行を含めない
-・choices は A〜E
-・正解は1つ
+・JSONのキーや値に改行を含めない
+・choicesはA〜E
+・説明は100文字以内
+・数式やLaTeX記法は禁止
+・バックスラッシュは禁止
+
+以下の資料から {n} 問の五肢択一問題を作成してください。
 
 出力形式:
 [
@@ -268,17 +265,18 @@ def generate_ai_problems(text, n=5):
 ]
 
 資料:
-{text[:2500]}
-"""]
-            }
-        ],
+{text[:2000]}
+"""
+
+    response = model.generate_content(
+        prompt,
         generation_config={
             "temperature": 0.1,
             "max_output_tokens": 1500
         }
     )
 
-    # ===== ここが重要 =====
+    # ===== 安全確認 =====
     if not response.candidates:
         raise ValueError("Geminiが応答を返しませんでした")
 
@@ -291,6 +289,7 @@ def generate_ai_problems(text, n=5):
 
     raw_text = candidate.content.parts[0].text
     return safe_json_load(raw_text)
+
 
 
 
@@ -535,6 +534,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
