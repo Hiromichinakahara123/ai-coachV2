@@ -237,7 +237,7 @@ def safe_json_load(text: str):
             f"JSON解析失敗: {e}\n\n--- 修復後JSON ---\n{json_text}"
         )
 
-def generate_one_ai_problem(text):
+def generate_one_ai_problems(text):
     model = genai.GenerativeModel("gemini-flash-latest")
 
     prompt = f"""
@@ -545,6 +545,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
