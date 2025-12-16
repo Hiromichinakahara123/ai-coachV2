@@ -7,6 +7,7 @@ import os
 import re
 import json
 import io
+import hashlib
 import google.generativeai as genai
 
 # ---------- File parsing ----------
@@ -27,31 +28,102 @@ DB_FILE = "pk_study_log.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+
     c.execute("""
-        CREATE TABLE IF NOT EXISTS logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            topic TEXT,
-            is_correct INTEGER
-        )
+    CREATE TABLE IF NOT EXISTS materials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        file_hash TEXT UNIQUE,
+        uploaded_at TEXT
+    )
     """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        material_id INTEGER,
+        topic TEXT,
+        question TEXT,
+        choices_json TEXT,
+        correct TEXT,
+        explanation TEXT
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_key TEXT UNIQUE
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS answers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER,
+        question_id INTEGER,
+        is_correct INTEGER,
+        answered_at TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
-def log_result(topic, is_correct):
+def calc_file_hash(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+def get_or_create_material(file):
+    data = file.read()
+    file_hash = calc_file_hash(data)
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
-
     c.execute(
-        "INSERT INTO logs (timestamp, topic, is_correct) VALUES (?, ?, ?)",
-        (now_jst.strftime("%Y-%m-%d %H:%M:%S"), topic, int(is_correct))
+        "SELECT id FROM materials WHERE file_hash = ?",
+        (file_hash,)
     )
+    row = c.fetchone()
+
+    if row:
+        material_id = row[0]
+    else:
+        c.execute(
+            "INSERT INTO materials (title, file_hash, uploaded_at) VALUES (?, ?, ?)",
+            (
+                file.name,
+                file_hash,
+                datetime.now(ZoneInfo("Asia/Tokyo")).isoformat()
+            )
+        )
+        material_id = c.lastrowid
+        conn.commit()
+
+    conn.close()
+    return material_id, data
+
+def log_answer(student_id, question_id, is_correct):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT INTO answers
+    (student_id, question_id, is_correct, answered_at)
+    VALUES (?, ?, ?, ?)
+    """, (
+        student_id,
+        question_id,
+        int(is_correct),
+        datetime.now(ZoneInfo("Asia/Tokyo")).isoformat()
+    ))
 
     conn.commit()
     conn.close()
-
+    
+student_id = get_or_create_student(student_key)
+question_id = p["id"]   # DB保存時に保持する
+log_answer(student_id, question_id, st.session_state.is_correct)
 
 def get_stats():
     conn = sqlite3.connect(DB_FILE)
@@ -258,6 +330,29 @@ def get_ai_coaching_message(df):
 # =====================================================
 # UI
 # =====================================================
+student_key = st.text_input("学籍番号またはニックネーム")
+def get_or_create_student(student_key):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    c.execute(
+        "SELECT id FROM students WHERE student_key = ?",
+        (student_key,)
+    )
+    row = c.fetchone()
+
+    if row:
+        student_id = row[0]
+    else:
+        c.execute(
+            "INSERT INTO students (student_key) VALUES (?)",
+            (student_key,)
+        )
+        student_id = c.lastrowid
+        conn.commit()
+
+    conn.close()
+    return student_id
 
 def main():
     st.set_page_config("AIコーチング学習アプリ", layout="centered")
@@ -286,7 +381,9 @@ def main():
         )
         if file:
             with st.spinner("資料解析中..."):
-                st.session_state.text = extract_text(file)
+                material_id, data = get_or_create_material(file)
+                st.session_state.material_id = material_id
+                st.session_state.text = extract_text(io.BytesIO(data))
             st.success("資料を読み込みました")
 
             if st.button("AI問題を生成"):
@@ -301,6 +398,31 @@ def main():
                 except Exception as e:
                     st.error("❌ 問題生成に失敗しました")
                     st.exception(e)
+def save_questions(material_id, problems):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    for p in problems:
+        c.execute("""
+        INSERT INTO questions
+        (material_id, topic, question, choices_json, correct, explanation)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            material_id,
+            p["topic"],
+            p["question"],
+            json.dumps(p["choices"], ensure_ascii=False),
+            p["correct"],
+            p["explanation"]
+        ))
+
+    conn.commit()
+    conn.close()
+    
+problems = generate_ai_problems(st.session_state.text)
+save_questions(st.session_state.material_id, problems)
+st.session_state.problems = problems
+
 
     # ---------- 問題 ----------
     with tab2:
@@ -386,6 +508,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
