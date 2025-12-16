@@ -295,25 +295,7 @@ def generate_ai_problems(text, n=3):
         except Exception as e:
             print(f"⚠️ 問題{i+1}生成失敗: {e}")
     return problems
-
-
-    # ===== 安全確認 =====
-    if not response.candidates:
-        raise ValueError("Geminiが応答を返しませんでした")
-
-    candidate = response.candidates[0]
-
-    if not candidate.content or not candidate.content.parts:
-        raise ValueError(
-            f"Gemini出力が空です (finish_reason={candidate.finish_reason})"
-        )
-
-    raw_text = candidate.content.parts[0].text
-    return safe_json_load(raw_text)
-
-
-
-
+   
 def get_ai_coaching_message(df):
     if df.empty:
         return "まだ学習履歴がありません。"
@@ -421,6 +403,9 @@ def main():
         st.session_state.idx = 0
     if "answered" not in st.session_state:
         st.session_state.answered = False
+    if "answered_idx" not in st.session_state:
+        st.session_state.answered_idx = {}
+
 
     tab1, tab2, tab3 = st.tabs(["資料", "問題演習", "コーチング"])
 
@@ -536,15 +521,13 @@ def main():
             if st.button("解答する"):
                 st.session_state.answered_idx[st.session_state.idx] = True
                 st.session_state.is_correct = (choice == p["correct"])
-                topic = p.get("topic", "未分類")
                 student_id = get_or_create_student(student_key)
-                log_answer(
-                    student_id, p["id"], st.session_state.is_correct
-                )
+                log_answer(student_id, p["id"], st.session_state.is_correct)
+
 
 
         # --- 解答後表示 ---
-        if st.session_state.answered:
+        if st.session_state.answered_idx.get(st.session_state.idx, False):
             if st.session_state.is_correct:
                 st.success("正解です 🎉")
             else:
@@ -585,6 +568,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
