@@ -441,26 +441,26 @@ def main():
                     st.exception(e)
 
 
-def save_questions(material_id, problems):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    def save_questions(material_id, problems):
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
 
-    for p in problems:
-        c.execute("""
-        INSERT INTO questions
-        (material_id, topic, question, choices_json, correct, explanation)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            material_id,
-            p["topic"],
-            p["question"],
-            json.dumps(p["choices"], ensure_ascii=False),
-            p["correct"],
-            p["explanation"]
-        ))
+        for p in problems:
+            c.execute("""
+            INSERT INTO questions
+            (material_id, topic, question, choices_json, correct, explanation)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                material_id,
+                p["topic"],
+                p["question"],
+                json.dumps(p["choices"], ensure_ascii=False),
+                p["correct"],
+                p["explanation"]
+            ))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
     
 
     # ---------- 問題 ----------
@@ -553,6 +553,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
