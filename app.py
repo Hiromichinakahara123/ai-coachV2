@@ -487,11 +487,16 @@ def save_questions(material_id, problems):
         st.subheader(f"問題 {st.session_state.idx + 1}")
         st.markdown(p["question"])
 
+        # --- choices を dict に変換（1問分） ---
+        p["choices"] = json.loads(p["choices_json"])
+
         choice = st.radio(
             "選択肢",
-            for p in st.session_state.problems:
-                p["choices"] = json.loads(p["choices_json"])
-        (
+            options=list(p["choices"].keys()),
+            format_func=lambda x: f"{x}: {p['choices'][x]}",
+            key=f"choice_{st.session_state.idx}"
+        )
+
 
         # --- 解答する ---
         if not st.session_state.answered:
@@ -548,6 +553,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
