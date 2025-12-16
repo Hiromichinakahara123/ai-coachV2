@@ -436,9 +436,9 @@ def main():
                     st.success("問題を生成しました")
                     st.rerun()
 
-            except Exception as e:
-                st.error("❌ 問題生成に失敗しました")
-                st.exception(e)
+                except Exception as e:
+                    st.error("❌ 問題生成に失敗しました")
+                    st.exception(e)
 
 
 def save_questions(material_id, problems):
@@ -549,6 +549,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
