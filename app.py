@@ -241,9 +241,6 @@ def generate_ai_problems(text, n=5):
 ・JSONのみ出力
 ・JSONのキーや値に改行を含めない
 ・choicesはA〜E
-・説明は100文字以内
-・数式やLaTeX記法は禁止
-・バックスラッシュは禁止
 
 以下の資料から {n} 問の五肢択一問題を作成してください。
 
@@ -534,6 +531,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
