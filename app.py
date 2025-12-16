@@ -416,19 +416,30 @@ def main():
                         save_questions(st.session_state.material_id, problems)
 
                         conn = sqlite3.connect(DB_FILE)
-                        st.session_state.problems = pd.read_sql("""
+                        df = pd.read_sql(
+                            """
                             SELECT * FROM questions
                             WHERE material_id = ?
-                        """, conn, params=(st.session_state.material_id,)).to_dict("records")
+                            """,
+                            conn,
+                            params=(st.session_state.material_id,)
+                        )
                         conn.close()
+
+                        st.session_state.problems = df.to_dict("records")
+
+                        # ★ choices_json を dict に戻す（超重要）
+                        for p in st.session_state.problems:
+                            p["choices"] = json.loads(p["choices_json"])
 
                     st.session_state.idx = 0
                     st.success("問題を生成しました")
                     st.rerun()
 
-                except Exception as e:
-                    st.error("❌ 問題生成に失敗しました")
-                    st.exception(e)
+    except Exception as e:
+        st.error("❌ 問題生成に失敗しました")
+        st.exception(e)
+
 
 def save_questions(material_id, problems):
     conn = sqlite3.connect(DB_FILE)
@@ -538,6 +549,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
