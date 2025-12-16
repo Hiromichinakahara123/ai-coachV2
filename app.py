@@ -237,7 +237,7 @@ def safe_json_load(text: str):
             f"JSON解析失敗: {e}\n\n--- 修復後JSON ---\n{json_text}"
         )
 
-def generate_one_ai_problems(text):
+def generate_one_ai_problem(text):
     model = genai.GenerativeModel("gemini-flash-latest")
 
     prompt = f"""
@@ -285,6 +285,16 @@ def generate_one_ai_problems(text):
 
     raw = c.content.parts[0].text
     return safe_json_load(f"[{raw}]")[0]  # 配列化して再利用
+    
+def generate_ai_problems(text, n=3):
+    problems = []
+    for i in range(n):
+        try:
+            p = generate_one_ai_problem(text)
+            problems.append(p)
+        except Exception as e:
+            print(f"⚠️ 問題{i+1}生成失敗: {e}")
+    return problems
 
 
     # ===== 安全確認 =====
@@ -545,6 +555,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
