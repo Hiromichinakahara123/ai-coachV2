@@ -490,7 +490,7 @@ def main():
             
 
     # --- 全問終了 ---
-        if st.session_state.idx >= len(st.session_state.problems):
+        if st.session_state.problems and st.session_state.idx >= len(st.session_state.problems):
             st.success("🎉 すべての問題が終了しました！")
 
             df = get_stats()
@@ -502,7 +502,8 @@ def main():
                 st.session_state.answered = False
                 st.rerun()
             return
-
+            
+         # --- 問題表示 ---
         p = st.session_state.problems[st.session_state.idx]
         st.subheader(f"問題 {st.session_state.idx + 1}")
         st.markdown(p["question"])
@@ -573,6 +574,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
