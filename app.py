@@ -487,8 +487,7 @@ def main():
             
         if not st.session_state.problems:
             st.info("問題がまだありません")
-        else:
-    
+            
 
     # --- 全問終了 ---
         if st.session_state.idx >= len(st.session_state.problems):
@@ -574,6 +573,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
