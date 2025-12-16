@@ -231,29 +231,24 @@ def safe_json_load(text: str):
 def generate_ai_problems(text, n=5):
     model = genai.GenerativeModel("gemini-flash-latest")
 
-    system_prompt = """
-あなたは薬剤師国家試験対策問題を作成する教育AIです。
-
-【厳守事項】
-・提供資料の内容のみから作問する
-・薬剤師国家試験形式（5択単一選択）とする
-・正解は必ず1つ
-・誤りの選択肢は知識不足で選びやすいものにする
-・JSONのみ出力
-・JSONのキーや値に改行を含めない
-・choicesの各選択肢は1文で完結させる
-・説明文は100文字以内
-・数式は LaTeX や $ 記法を使わず、すべて文章または通常の記号で書く
-・バックスラッシュ（\）を一切使用しない
-"""
-
-    prompt = f"""
+    response = model.generate_content(
+        [
+            {
+                "role": "system",
+                "parts": ["あなたは薬剤師国家試験対策問題を作成する教育AIです。"]
+            },
+            {
+                "role": "user",
+                "parts": [f"""
 以下の資料から {n} 問の五肢択一問題を作成してください。
 
-【重要】
-・各問題に必ず「topic（分野名）」を付ける
-・topicは薬剤師国家試験の科目・領域名で簡潔に書く
-  （例：薬物動態学、製剤学、物理薬剤学、薬理学 など）
+【厳守】
+・資料の内容のみから作問
+・5択単一正解
+・JSONのみ出力
+・改行を含めない
+・choices は A〜E
+・正解は1つ
 
 出力形式:
 [
@@ -273,18 +268,30 @@ def generate_ai_problems(text, n=5):
 ]
 
 資料:
-{text[:3000]}
-"""
-
-    response = model.generate_content(
-        [system_prompt, prompt],
+{text[:2500]}
+"""]
+            }
+        ],
         generation_config={
             "temperature": 0.1,
-            "max_output_tokens": 2000
+            "max_output_tokens": 1500
         }
     )
 
-    return safe_json_load(response.text)
+    # ===== ここが重要 =====
+    if not response.candidates:
+        raise ValueError("Geminiが応答を返しませんでした")
+
+    candidate = response.candidates[0]
+
+    if not candidate.content or not candidate.content.parts:
+        raise ValueError(
+            f"Gemini出力が空です (finish_reason={candidate.finish_reason})"
+        )
+
+    raw_text = candidate.content.parts[0].text
+    return safe_json_load(raw_text)
+
 
 
 def get_ai_coaching_message(df):
@@ -528,6 +535,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
