@@ -121,23 +121,6 @@ def log_answer(student_id, question_id, is_correct):
     conn.commit()
     conn.close()
     
-if st.button("解答する"):
-    st.session_state.answered = True
-    is_correct = (choice == p["correct"])
-    log_answer(
-        student_id,
-        p["id"],
-        is_correct
-    )
-    
-student_id = get_or_create_student(student_key)
-log_answer(
-    student_id,
-    p["id"],
-    is_correct
-)
-
-
 def get_stats():
     conn = sqlite3.connect(DB_FILE)
     df = pd.read_sql("""
@@ -227,18 +210,15 @@ def extract_text(uploaded_file):
 # =====================================================
 
 def safe_json_load(text: str):
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```.*?\n", "", text)
-        text = text.rstrip("`").strip()
+    # ```json ``` を完全除去
+    text = re.sub(r"```.*?```", "", text, flags=re.S).strip()
 
-    # 最初の [ から最後の ] を抽出
-    start = text.find("[")
-    end = text.rfind("]")
-    if start == -1 or end == -1:
-        raise ValueError("JSON配列が見つかりません")
+    # JSON 配列部分のみ抽出
+    match = re.search(r"\[\s*\{.*\}\s*\]", text, flags=re.S)
+    if not match:
+        raise ValueError(f"JSON配列が見つかりません\n\n--- Gemini出力 ---\n{text}")
 
-    json_text = text[start:end + 1]
+    json_text = match.group()
 
     try:
         return json.loads(json_text)
@@ -246,6 +226,7 @@ def safe_json_load(text: str):
         raise ValueError(
             f"JSON解析失敗: {e}\n\n--- Gemini出力 ---\n{text}"
         )
+
 
 def generate_ai_problems(text, n=5):
     model = genai.GenerativeModel("gemini-flash-latest")
@@ -547,6 +528,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
