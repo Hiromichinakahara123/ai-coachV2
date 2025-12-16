@@ -375,7 +375,28 @@ def get_or_create_student(student_key):
 
     conn.close()
     return student_id
+    
+def save_questions(material_id, problems):
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
 
+        for p in problems:
+            c.execute("""
+            INSERT INTO questions
+            (material_id, topic, question, choices_json, correct, explanation)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                material_id,
+                p["topic"],
+                p["question"],
+                json.dumps(p["choices"], ensure_ascii=False),
+                p["correct"],
+                p["explanation"]
+            ))
+
+        conn.commit()
+        conn.close()
+    
 def main():
     st.set_page_config("AIコーチング学習アプリ", layout="centered")
     st.title("📚 AIコーチング学習アプリ")
@@ -427,11 +448,7 @@ def main():
                         conn.close()
 
                         st.session_state.problems = df.to_dict("records")
-
-                        # ★ choices_json を dict に戻す（超重要）
-                        for p in st.session_state.problems:
-                            p["choices"] = json.loads(p["choices_json"])
-
+                                         
                     st.session_state.idx = 0
                     st.success("問題を生成しました")
                     st.rerun()
@@ -439,30 +456,7 @@ def main():
                 except Exception as e:
                     st.error("❌ 問題生成に失敗しました")
                     st.exception(e)
-
-
-    def save_questions(material_id, problems):
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-
-        for p in problems:
-            c.execute("""
-            INSERT INTO questions
-            (material_id, topic, question, choices_json, correct, explanation)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                material_id,
-                p["topic"],
-                p["question"],
-                json.dumps(p["choices"], ensure_ascii=False),
-                p["correct"],
-                p["explanation"]
-            ))
-
-        conn.commit()
-        conn.close()
-    
-
+     
     # ---------- 問題 ----------
     with tab2:
         if not st.session_state.problems:
@@ -553,6 +547,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
