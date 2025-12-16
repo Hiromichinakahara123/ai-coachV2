@@ -412,9 +412,9 @@ def main():
                     """, conn, params=(st.session_state.material_id,)).to_dict("records")
                     conn.close()
 
-            st.session_state.idx = 0
-            st.success("問題を生成しました")
-            st.rerun()
+                st.session_state.idx = 0
+                st.success("問題を生成しました")
+                st.rerun()
 
 
                 except Exception as e:
@@ -526,6 +526,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
