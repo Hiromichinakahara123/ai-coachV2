@@ -210,23 +210,32 @@ def extract_text(uploaded_file):
 # =====================================================
 
 def safe_json_load(text: str):
-    # ```json ``` を完全除去
+    # ``` ブロック除去
     text = re.sub(r"```.*?```", "", text, flags=re.S).strip()
 
-    # JSON 配列部分のみ抽出
-    match = re.search(r"\[\s*\{.*\}\s*\]", text, flags=re.S)
-    if not match:
+    # JSON配列らしき部分を抽出
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1:
         raise ValueError(f"JSON配列が見つかりません\n\n--- Gemini出力 ---\n{text}")
 
-    json_text = match.group()
+    json_text = text[start:end + 1]
+
+    # ★★★ ここが肝 ★★★
+    # JSON文字列内の改行をスペースに置換
+    json_text = re.sub(r'"\s*\n\s*', '" ', json_text)
+    json_text = re.sub(r'\n\s*"', ' "', json_text)
+    json_text = json_text.replace("\n", " ")
+
+    # 連続スペース整理
+    json_text = re.sub(r"\s{2,}", " ", json_text)
 
     try:
         return json.loads(json_text)
     except json.JSONDecodeError as e:
         raise ValueError(
-            f"JSON解析失敗: {e}\n\n--- Gemini出力 ---\n{text}"
+            f"JSON解析失敗: {e}\n\n--- 修復後JSON ---\n{json_text}"
         )
-
 
 def generate_ai_problems(text, n=2):
     model = genai.GenerativeModel("gemini-flash-latest")
@@ -531,6 +540,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
