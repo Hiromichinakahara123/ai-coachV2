@@ -122,15 +122,29 @@ def log_answer(student_id, question_id, is_correct):
     conn.close()
     
 student_id = get_or_create_student(student_key)
-question_id = p["id"]   # DB保存時に保持する
-log_answer(student_id, question_id, st.session_state.is_correct)
+
+if st.button("解答する"):
+    st.session_state.answered = True
+    is_correct = (choice == p["correct"])
+    log_answer(
+        student_id,
+        p["id"],
+        is_correct
+    )
+
 
 def get_stats():
     conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql("SELECT * FROM logs", conn)
+    df = pd.read_sql("""
+        SELECT
+            a.id,
+            q.topic,
+            a.is_correct
+        FROM answers a
+        JOIN questions q ON a.question_id = q.id
+    """, conn)
     conn.close()
     return df
-
 
 # =====================================================
 # Gemini
@@ -381,19 +395,27 @@ def main():
         )
         if file:
             with st.spinner("資料解析中..."):
-                material_id, data = get_or_create_material(file)
+                material_id, _ = get_or_create_material(file)
                 st.session_state.material_id = material_id
-                st.session_state.text = extract_text(io.BytesIO(data))
+                file.seek(0)
+                st.session_state.text = extract_text(file)
             st.success("資料を読み込みました")
 
             if st.button("AI問題を生成"):
-                try:
-                    st.session_state.problems = generate_ai_problems(
-                        st.session_state.text
-                    )
-                    st.session_state.idx = 0
-                    st.success("問題を生成しました")
-                    st.rerun()
+                with st.spinner("問題生成中..."):
+                    problems = generate_ai_problems(st.session_state.text)
+                    save_questions(st.session_state.material_id, problems)
+                    conn = sqlite3.connect(DB_FILE)
+                    st.session_state.problems = pd.read_sql("""
+                        SELECT * FROM questions
+                        WHERE material_id = ?
+                    """, conn, params=(st.session_state.material_id,)).to_dict("records")
+                    conn.close()
+
+            st.session_state.idx = 0
+            st.success("問題を生成しました")
+            st.rerun()
+
 
                 except Exception as e:
                     st.error("❌ 問題生成に失敗しました")
@@ -419,10 +441,6 @@ def save_questions(material_id, problems):
     conn.commit()
     conn.close()
     
-problems = generate_ai_problems(st.session_state.text)
-save_questions(st.session_state.material_id, problems)
-st.session_state.problems = problems
-
 
     # ---------- 問題 ----------
     with tab2:
@@ -508,6 +526,7 @@ st.session_state.problems = problems
 
 if __name__ == "__main__":
     main()
+
 
 
 
