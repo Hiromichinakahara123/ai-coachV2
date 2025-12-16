@@ -481,7 +481,7 @@ def save_questions(material_id, problems):
             st.session_state.problems = pd.read_sql(...).to_dict("records")
             for p in st.session_state.problems:
                 p["choices"] = json.loads(p["choices_json"])
-
+        (
 
         # --- 解答する ---
         if not st.session_state.answered:
@@ -538,6 +538,7 @@ def save_questions(material_id, problems):
 
 if __name__ == "__main__":
     main()
+
 
 
 
