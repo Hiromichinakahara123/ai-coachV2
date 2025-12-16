@@ -442,22 +442,26 @@ def main():
                 try:
                     with st.spinner("問題生成中..."):
                         problems = generate_ai_problems(st.session_state.text)
+                       
+                        # ① DB保存
                         save_questions(st.session_state.material_id, problems)
-
+                        # ② DBから読み直す
                         conn = sqlite3.connect(DB_FILE)
                         df = pd.read_sql(
                             """
                             SELECT * FROM questions
                             WHERE material_id = ?
+                            ORDER BY id
                             """,
                             conn,
                             params=(st.session_state.material_id,)
                         )
                         conn.close()
-
+                        # ③ session_state に入れる
                         st.session_state.problems = df.to_dict("records")
                                          
                     st.session_state.idx = 0
+                    st.session_state.answered = False
                     st.success("問題を生成しました")
                     st.rerun()
 
@@ -555,6 +559,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
