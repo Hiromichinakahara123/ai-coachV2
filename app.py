@@ -228,7 +228,7 @@ def safe_json_load(text: str):
         )
 
 
-def generate_ai_problems(text, n=5):
+def generate_ai_problems(text, n=2):
     model = genai.GenerativeModel("gemini-flash-latest")
 
     prompt = f"""
@@ -531,6 +531,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
