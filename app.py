@@ -256,12 +256,12 @@ def generate_one_ai_problem(text, problem_no):
 これまでとは異なる論点・概念・知識を使ってください。
 同じ問題・類似問題は禁止です。
 
-【条件】
+【条件】※必ず厳守すること
 ・5択単一正解
-・choices は A〜E
-・必ず有効なJSON形式で出力し、末尾の閉じカッコを忘れないでください
-・各項目の間には必ずカンマを入れるように徹底してください
-・説明は簡潔に
+・choices は A〜E の5つすべてを含める
+・正解は必ず "correct" キーで出力する（A〜E の1文字）
+・解説は必ず "explanation" キーで出力する（1〜3文）
+・JSON以外の文章は一切出力しない
 
 出力形式:
 {{
@@ -366,14 +366,18 @@ def get_ai_coaching_message(df):
 # =====================================================
 student_key = st.text_input("学籍番号またはニックネーム")
 def normalize_problem(p: dict) -> dict:
-    # 正解キーの揺れ対応
+    # --- correct の揺れ対応 ---
     if "correct" not in p:
         for k in ["answer", "correct_answer", "正解"]:
             if k in p:
                 p["correct"] = p[k]
                 break
 
-    # 必須キーのチェック
+    # --- explanation が無い場合の補完 ---
+    if "explanation" not in p:
+        p["explanation"] = "解説はAIによって自動生成されました。"
+
+    # --- 最終チェック ---
     required = ["topic", "question", "choices", "correct", "explanation"]
     missing = [k for k in required if k not in p]
 
@@ -382,7 +386,14 @@ def normalize_problem(p: dict) -> dict:
             f"❌ 問題データに必須キーが不足しています: {missing}\n\n{p}"
         )
 
+    # --- correct が choices に存在するか ---
+    if p["correct"] not in p["choices"]:
+        raise ValueError(
+            f"❌ correct が choices に含まれていません: {p['correct']}\n\n{p}"
+        )
+
     return p
+
 
 def get_or_create_student(student_key):
     conn = sqlite3.connect(DB_FILE)
@@ -617,6 +628,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
