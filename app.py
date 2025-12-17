@@ -238,7 +238,7 @@ def safe_json_load(text: str):
 
 
 def generate_one_ai_problem(text):
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = f"""
 以下の資料をもとに、薬剤師国家試験形式の五肢択一問題を1問だけ作成してください。
@@ -318,7 +318,7 @@ def get_ai_coaching_message(df):
     stats["正答率"] = stats["正解数"] / stats["回答数"]
     stats_csv = stats.sort_values("正答率").to_csv()
 
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = f"""
 あなたは【薬学教育・国家試験指導を専門とする大学教員】です。以下は、ある学生の演習結果（分野別）です。
@@ -581,6 +581,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
