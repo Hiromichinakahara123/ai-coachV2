@@ -14,6 +14,8 @@ import google.generativeai as genai
 import pypdf
 from docx import Document
 from pptx import Presentation
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # =====================================================
 # DB
@@ -146,6 +148,25 @@ def configure_gemini():
 # =====================================================
 # File extraction
 # =====================================================
+def chunk_text(text, size=500, overlap=100):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + size
+        chunks.append(text[start:end])
+        start = end - overlap
+    return chunks
+
+def retrieve_relevant_chunks(chunks, query, top_k=3):
+    vec = TfidfVectorizer(
+        token_pattern=r"(?u)\b\w+\b",
+        max_df=0.9
+    )
+    X = vec.fit_transform(chunks + [query])
+    sims = cosine_similarity(X[-1], X[:-1])[0]
+    idx = sims.argsort()[-top_k:][::-1]
+    return [chunks[i] for i in idx]
+
 
 def extract_from_pdf(data):
     reader = pypdf.PdfReader(io.BytesIO(data))
@@ -278,8 +299,8 @@ def generate_one_ai_problem(text, problem_no):
   "explanation": "解説"
 }}
 
-資料:
-{text[:1200]}
+資料（関連部分のみ）:
+{text}
 """
 
     response = model.generate_content(
@@ -330,21 +351,37 @@ def get_ai_coaching_message(df):
     stats["正答率"] = stats["正解数"] / stats["回答数"]
     stats_csv = stats.sort_values("正答率").to_csv()
 
+    # --- RAG: 教材から学習指導に関連する部分を抽出 ---
+    if "text" in st.session_state and st.session_state.text:
+        chunks = chunk_text(st.session_state.text)
+        retrieved = retrieve_relevant_chunks(
+            chunks,
+            query="薬剤師国家試験 分野別 学習指導 弱点"
+        )
+        context = "\n\n".join(retrieved)
+    else:
+        context = ""
+
     model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = f"""
-あなたは【薬学教育・国家試験指導を専門とする大学教員】です。以下は、ある学生の演習結果（分野別）です。
-【分野別成績】
+あなたは【薬学教育・国家試験指導を専門とする大学教員】です。
+
+以下は、ある学生の分野別成績です。
 {stats_csv}
-この結果から、
+
+以下は、対応する教材の抜粋です。
+{context}
+
+この情報をもとに、
 ・つまずきやすい概念
 ・混同しやすいポイント
 ・理解を深めるための学習の工夫
-をそれぞれ明確に書いてください。
+をそれぞれ簡潔かつ具体的に述べてください。
 
 【重要】
-・前置きや挨拶文は禁止
-・すぐに分析から書き始める
+・前置きや挨拶は禁止
+・分析から書き始める
 """
 
     try:
@@ -359,6 +396,7 @@ def get_ai_coaching_message(df):
 
     except Exception as e:
         return f"❌ AIコーチング生成エラー: {e}"
+
 
 
 # =====================================================
@@ -496,7 +534,18 @@ def main():
             if st.button("AI問題を生成"):
                 try:
                     with st.spinner("問題生成中..."):
-                        problems = generate_ai_problems(st.session_state.text)
+                        chunks = chunk_text(st.session_state.text)
+
+                        retrieved = retrieve_relevant_chunks(
+                            chunks,
+                            query="薬剤師国家試験の五肢択一問題を作成する"
+)
+
+                        context = "\n\n".join(retrieved)
+
+                        problems = generate_ai_problems(context)
+
+                        
                         if not problems:
                             raise ValueError("問題が1問も生成できませんでした（Gemini出力/JSON解析失敗の可能性）")
 
@@ -647,6 +696,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
