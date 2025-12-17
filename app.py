@@ -373,6 +373,16 @@ def normalize_problem(p: dict) -> dict:
                 p["correct"] = p[k]
                 break
 
+     # --- ★ correct が無い場合の最終救済 ---
+    if "correct" not in p:
+        # choices がある場合のみ救済
+        if "choices" in p and isinstance(p["choices"], dict):
+            # 仮で A を正解にする（ログ用途）
+            p["correct"] = list(p["choices"].keys())[0]
+            p["_warning"] = "correct が Gemini 出力に存在しなかったため自動補完"
+        else:
+            raise ValueError("❌ correct も choices も存在しません")
+            
     # --- explanation が無い場合の補完 ---
     if "explanation" not in p:
         p["explanation"] = "解説はAIによって自動生成されました。"
@@ -425,6 +435,9 @@ def save_questions(material_id, problems):
     for p in problems:
         p = normalize_problem(p)   # ← ★ この1行を追加
 
+        if "_warning" in p:
+            st.warning(f"⚠️ 問題生成警告: {p['_warning']}")
+            
         c.execute("""
         INSERT INTO questions
         (material_id, topic, question, choices_json, correct, explanation)
@@ -634,6 +647,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
