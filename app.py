@@ -206,17 +206,16 @@ def extract_text(uploaded_file):
 # =====================================================
 
 def safe_json_load(text: str):
-    # ```json ... ``` を外す（Geminiがコードブロックで返すことがあるため）
+    # コードブロックの除去
     text = re.sub(r"```(?:json)?", "", text).replace("```", "").strip()
 
-    # まずはそのまま JSON として解釈を試みる（オブジェクトでも配列でもOK）
+    # 1. そのまま試行
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # うまくいかない場合：文字列中から JSON部分だけを抽出して再トライ
-    # （{...} または [...] の最初と最後を探す）
+    # 2. 範囲抽出
     start_candidates = [i for i in [text.find("{"), text.find("[")] if i != -1]
     if not start_candidates:
         raise ValueError(f"JSONが見つかりません\n\n--- Gemini出力 ---\n{text}")
@@ -226,16 +225,24 @@ def safe_json_load(text: str):
     end_arr = text.rfind("]")
     end = max(end_obj, end_arr)
 
+    # 閉じカッコが見つからない場合、文字列の最後までを対象とする
     if end == -1 or end <= start:
-        raise ValueError(f"JSONの終端が見つかりません\n\n--- Gemini出力 ---\n{text}")
+        json_text = text[start:].strip()
+    else:
+        json_text = text[start:end + 1].strip()
 
-    json_text = text[start:end + 1].strip()
-
+    # 3. 解析を試み、失敗したら閉じカッコを補完してリトライ
     try:
         return json.loads(json_text)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"JSON解析失敗: {e}\n\n--- 抽出JSON ---\n{json_text}")
-
+    except json.JSONDecodeError:
+        try:
+            # 強引に閉じカッコを付け足してみる（単純な生成中断対策）
+            return json.loads(json_text + "}")
+        except:
+            try:
+                return json.loads(json_text + "]}") # ネスト対策
+            except:
+                raise ValueError(f"JSON解析失敗: 構造が壊れています。\n\n--- 抽出JSON ---\n{json_text}")
 
 def generate_one_ai_problem(text, problem_no):
     model = genai.GenerativeModel("gemini-2.5-flash-lite")
@@ -588,6 +595,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
