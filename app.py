@@ -15,10 +15,6 @@ import pypdf
 from docx import Document
 from pptx import Presentation
 
-# ---------- Gemini ----------
-import google.generativeai as genai
-
-
 # =====================================================
 # DB
 # =====================================================
@@ -210,32 +206,36 @@ def extract_text(uploaded_file):
 # =====================================================
 
 def safe_json_load(text: str):
-    # ``` ブロック除去
-    text = re.sub(r"```.*?```", "", text, flags=re.S).strip()
+    # ```json ... ``` を外す（Geminiがコードブロックで返すことがあるため）
+    text = re.sub(r"```(?:json)?", "", text).replace("```", "").strip()
 
-    # JSON配列らしき部分を抽出
-    start = text.find("[")
-    end = text.rfind("]")
-    if start == -1 or end == -1:
-        raise ValueError(f"JSON配列が見つかりません\n\n--- Gemini出力 ---\n{text}")
+    # まずはそのまま JSON として解釈を試みる（オブジェクトでも配列でもOK）
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
 
-    json_text = text[start:end + 1]
+    # うまくいかない場合：文字列中から JSON部分だけを抽出して再トライ
+    # （{...} または [...] の最初と最後を探す）
+    start_candidates = [i for i in [text.find("{"), text.find("[")] if i != -1]
+    if not start_candidates:
+        raise ValueError(f"JSONが見つかりません\n\n--- Gemini出力 ---\n{text}")
 
-    # ★★★ ここが肝 ★★★
-    # JSON文字列内の改行をスペースに置換
-    json_text = re.sub(r'"\s*\n\s*', '" ', json_text)
-    json_text = re.sub(r'\n\s*"', ' "', json_text)
-    json_text = json_text.replace("\n", " ")
+    start = min(start_candidates)
+    end_obj = text.rfind("}")
+    end_arr = text.rfind("]")
+    end = max(end_obj, end_arr)
 
-    # 連続スペース整理
-    json_text = re.sub(r"\s{2,}", " ", json_text)
+    if end == -1 or end <= start:
+        raise ValueError(f"JSONの終端が見つかりません\n\n--- Gemini出力 ---\n{text}")
+
+    json_text = text[start:end + 1].strip()
 
     try:
         return json.loads(json_text)
     except json.JSONDecodeError as e:
-        raise ValueError(
-            f"JSON解析失敗: {e}\n\n--- 修復後JSON ---\n{json_text}"
-        )
+        raise ValueError(f"JSON解析失敗: {e}\n\n--- 抽出JSON ---\n{json_text}")
+
 
 def generate_one_ai_problem(text):
     model = genai.GenerativeModel("gemini-flash-latest")
@@ -284,7 +284,17 @@ def generate_one_ai_problem(text):
         raise ValueError(f"Gemini出力が空です (finish_reason={c.finish_reason})")
 
     raw = c.content.parts[0].text
-    return safe_json_load(f"[{raw}]")[0]  # 配列化して再利用
+    data = safe_json_load(raw)
+
+    # Geminiが配列で返してきた場合にも対応
+    if isinstance(data, list):
+        if not data:
+            raise ValueError("Geminiが空配列を返しました")
+        return data[0]
+
+    # オブジェクトで返してきた場合
+    return data
+
     
 def generate_ai_problems(text, n=3):
     problems = []
@@ -293,7 +303,7 @@ def generate_ai_problems(text, n=3):
             p = generate_one_ai_problem(text)
             problems.append(p)
         except Exception as e:
-            print(f"⚠️ 問題{i+1}生成失敗: {e}")
+            st.warning(f"⚠️ 問題{i+1}生成失敗: {e}")
     return problems
    
 def get_ai_coaching_message(df):
@@ -427,6 +437,9 @@ def main():
                 try:
                     with st.spinner("問題生成中..."):
                         problems = generate_ai_problems(st.session_state.text)
+                        if not problems:
+                            raise ValueError("問題が1問も生成できませんでした（Gemini出力/JSON解析失敗の可能性）")
+
                        
                         # ① DB保存
                         save_questions(st.session_state.material_id, problems)
@@ -568,6 +581,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
