@@ -402,7 +402,7 @@ def save_questions(material_id, problems):
                 p["topic"],
                 p["question"],
                 json.dumps(p["choices"], ensure_ascii=False),
-                correct_value = p.get("correct") or p.get("answer") or p.get("正解") or "",
+                p["correct"],
                 p["explanation"]
             ))
 
@@ -595,6 +595,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
