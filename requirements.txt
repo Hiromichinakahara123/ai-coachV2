@@ -4,3 +4,4 @@ google-generativeai
 pypdf
 python-docx
 python-pptx
+scikit-learn
