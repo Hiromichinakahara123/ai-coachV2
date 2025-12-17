@@ -580,9 +580,15 @@ def main():
         if not answered:
             if st.button("解答する"):
                 st.session_state.answered_idx[st.session_state.idx] = True
-                st.session_state.is_correct_idx[st.session_state.idx] = (choice == p["correct"])
+
+                # ★ 正誤判定を変数に保持
+                is_correct = (choice == p["correct"])
+                st.session_state.is_correct_idx[st.session_state.idx] = is_correct
+
                 student_id = get_or_create_student(student_key)
-                log_answer(student_id, p["id"], st.session_state.is_correct)
+
+                # ★ 修正ポイント：存在しない is_correct を参照しない
+                log_answer(student_id, p["id"], is_correct)
 
 
 
@@ -628,6 +634,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
