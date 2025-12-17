@@ -415,6 +415,8 @@ def main():
         st.session_state.answered = False
     if "answered_idx" not in st.session_state:
         st.session_state.answered_idx = {}
+    if "is_correct_idx" not in st.session_state:
+        st.session_state.is_correct_idx = {}
 
 
     tab1, tab2, tab3 = st.tabs(["資料", "問題演習", "コーチング"])
@@ -533,18 +535,18 @@ def main():
         if not answered:
             if st.button("解答する"):
                 st.session_state.answered_idx[st.session_state.idx] = True
-                st.session_state.is_correct = (choice == p["correct"])
+                st.session_state.is_correct_idx[st.session_state.idx] = (choice == p["correct"])
                 student_id = get_or_create_student(student_key)
                 log_answer(student_id, p["id"], st.session_state.is_correct)
 
 
 
         # --- 解答後表示 ---
-        if st.session_state.answered_idx.get(st.session_state.idx, False):
-            if st.session_state.is_correct:
-                st.success("正解です 🎉")
-            else:
-                st.error(f"不正解です。正解は {p['correct']} です。")
+        is_correct = st.session_state.is_correct_idx.get(st.session_state.idx, False)
+        if is_correct:
+            st.success("正解です 🎉")
+        else:
+            st.error(f"不正解です。正解は {p['correct']} です。")
 
             st.markdown("### 解説")
             st.markdown(p["explanation"])
@@ -581,6 +583,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
