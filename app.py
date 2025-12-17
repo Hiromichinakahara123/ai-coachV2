@@ -365,6 +365,25 @@ def get_ai_coaching_message(df):
 # UI
 # =====================================================
 student_key = st.text_input("学籍番号またはニックネーム")
+def normalize_problem(p: dict) -> dict:
+    # 正解キーの揺れ対応
+    if "correct" not in p:
+        for k in ["answer", "correct_answer", "正解"]:
+            if k in p:
+                p["correct"] = p[k]
+                break
+
+    # 必須キーのチェック
+    required = ["topic", "question", "choices", "correct", "explanation"]
+    missing = [k for k in required if k not in p]
+
+    if missing:
+        raise ValueError(
+            f"❌ 問題データに必須キーが不足しています: {missing}\n\n{p}"
+        )
+
+    return p
+
 def get_or_create_student(student_key):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -389,25 +408,28 @@ def get_or_create_student(student_key):
     return student_id
     
 def save_questions(material_id, problems):
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
 
-        for p in problems:
-            c.execute("""
-            INSERT INTO questions
-            (material_id, topic, question, choices_json, correct, explanation)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                material_id,
-                p["topic"],
-                p["question"],
-                json.dumps(p["choices"], ensure_ascii=False),
-                p["correct"],
-                p["explanation"]
-            ))
+    for p in problems:
+        p = normalize_problem(p)   # ← ★ この1行を追加
 
-        conn.commit()
-        conn.close()
+        c.execute("""
+        INSERT INTO questions
+        (material_id, topic, question, choices_json, correct, explanation)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            material_id,
+            p["topic"],
+            p["question"],
+            json.dumps(p["choices"], ensure_ascii=False),
+            p["correct"],
+            p["explanation"]
+        ))
+
+    conn.commit()
+    conn.close()
+
     
 def main():
     st.set_page_config("AIコーチング学習アプリ", layout="centered")
@@ -595,6 +617,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
