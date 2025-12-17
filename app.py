@@ -237,11 +237,17 @@ def safe_json_load(text: str):
         raise ValueError(f"JSON解析失敗: {e}\n\n--- 抽出JSON ---\n{json_text}")
 
 
-def generate_one_ai_problem(text):
+def generate_one_ai_problem(text, problem_no):
     model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = f"""
-以下の資料をもとに、薬剤師国家試験形式の五肢択一問題を1問だけ作成してください。
+以下の資料をもとに、薬剤師国家試験形式の五肢択一問題を1問作成してください。
+
+
+【重要】
+これは【{problem_no}問目】です。
+これまでとは異なる論点・概念・知識を使ってください。
+同じ問題・類似問題は禁止です。
 
 【条件】
 ・5択単一正解
@@ -299,12 +305,10 @@ def generate_one_ai_problem(text):
 def generate_ai_problems(text, n=3):
     problems = []
     for i in range(n):
-        try:
-            p = generate_one_ai_problem(text)
-            problems.append(p)
-        except Exception as e:
-            st.warning(f"⚠️ 問題{i+1}生成失敗: {e}")
+        p = generate_one_ai_problem(text, i + 1)
+        problems.append(p)
     return problems
+
    
 def get_ai_coaching_message(df):
     if df.empty:
@@ -583,6 +587,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
