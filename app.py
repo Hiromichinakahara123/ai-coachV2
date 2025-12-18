@@ -71,8 +71,7 @@ def init_db():
 def calc_file_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
-def get_or_create_material(file):
-    data = file.read()
+def get_or_create_material(file_name: str, data: bytes):
     file_hash = calc_file_hash(data)
 
     conn = sqlite3.connect(DB_FILE)
@@ -90,7 +89,7 @@ def get_or_create_material(file):
         c.execute(
             "INSERT INTO materials (title, file_hash, uploaded_at) VALUES (?, ?, ?)",
             (
-                file.name,
+                file_name,
                 file_hash,
                 datetime.now(ZoneInfo("Asia/Tokyo")).isoformat()
             )
@@ -99,7 +98,8 @@ def get_or_create_material(file):
         conn.commit()
 
     conn.close()
-    return material_id, data
+    return material_id
+
 
 def log_answer(student_id, question_id, is_correct):
     conn = sqlite3.connect(DB_FILE)
@@ -119,7 +119,7 @@ def log_answer(student_id, question_id, is_correct):
     conn.commit()
     conn.close()
     
-def get_stats():
+def get_stats(student_id):
     conn = sqlite3.connect(DB_FILE)
     df = pd.read_sql("""
         SELECT
@@ -128,9 +128,11 @@ def get_stats():
             a.is_correct
         FROM answers a
         JOIN questions q ON a.question_id = q.id
-    """, conn)
+        WHERE a.student_id = ?
+    """, conn, params=(student_id,))
     conn.close()
     return df
+
 
 # =====================================================
 # Gemini
@@ -149,12 +151,9 @@ def configure_gemini():
 # File extraction
 # =====================================================
 def chunk_text(text, size=500, overlap=100):
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + size
-        chunks.append(text[start:end])
-        start = end - overlap
+    if overlap >= size:
+        raise ValueError("overlap must be smaller than size")
+
     return chunks
 
 def retrieve_relevant_chunks(chunks, query, top_k=3):
@@ -162,7 +161,8 @@ def retrieve_relevant_chunks(chunks, query, top_k=3):
         token_pattern=r"(?u)\b\w+\b",
         max_df=0.9
     )
-    X = vec.fit_transform(chunks + [query])
+    if not chunks:
+        return []
     sims = cosine_similarity(X[-1], X[:-1])[0]
     idx = sims.argsort()[-top_k:][::-1]
     return [chunks[i] for i in idx]
@@ -206,9 +206,8 @@ def extract_from_pptx(data):
                 texts.append(shape.text)
     return "\n".join(texts)
 
-def extract_text(uploaded_file):
-    data = uploaded_file.read()
-    ext = uploaded_file.name.split(".")[-1].lower()
+def extract_text_from_bytes(data: bytes, filename: str):
+    ext = filename.split(".")[-1].lower()
 
     if ext == "pdf":
         return extract_from_pdf(data)
@@ -220,6 +219,7 @@ def extract_text(uploaded_file):
         return extract_from_pptx(data)
 
     raise ValueError("未対応のファイル形式です")
+
 
 
 # =====================================================
@@ -404,43 +404,20 @@ def get_ai_coaching_message(df):
 # =====================================================
 student_key = st.text_input("学籍番号またはニックネーム")
 def normalize_problem(p: dict) -> dict:
-    # --- correct の揺れ対応 ---
-    if "correct" not in p:
-        for k in ["answer", "correct_answer", "正解"]:
-            if k in p:
-                p["correct"] = p[k]
-                break
-
-     # --- ★ correct が無い場合の最終救済 ---
-    if "correct" not in p:
-        # choices がある場合のみ救済
-        if "choices" in p and isinstance(p["choices"], dict):
-            # 仮で A を正解にする（ログ用途）
-            p["correct"] = list(p["choices"].keys())[0]
-            p["_warning"] = "correct が Gemini 出力に存在しなかったため自動補完"
-        else:
-            raise ValueError("❌ correct も choices も存在しません")
-            
-    # --- explanation が無い場合の補完 ---
-    if "explanation" not in p:
-        p["explanation"] = "解説はAIによって自動生成されました。"
-
-    # --- 最終チェック ---
     required = ["topic", "question", "choices", "correct", "explanation"]
     missing = [k for k in required if k not in p]
 
     if missing:
-        raise ValueError(
-            f"❌ 問題データに必須キーが不足しています: {missing}\n\n{p}"
-        )
+        raise ValueError(f"必須キー不足: {missing}")
 
-    # --- correct が choices に存在するか ---
+    if not isinstance(p["choices"], dict) or len(p["choices"]) != 5:
+        raise ValueError("choices が不正です")
+
     if p["correct"] not in p["choices"]:
-        raise ValueError(
-            f"❌ correct が choices に含まれていません: {p['correct']}\n\n{p}"
-        )
+        raise ValueError("correct が choices に含まれていません")
 
     return p
+
 
 
 def get_or_create_student(student_key):
@@ -465,17 +442,33 @@ def get_or_create_student(student_key):
 
     conn.close()
     return student_id
+
+def delete_questions_by_material(material_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    c.execute(
+        "DELETE FROM questions WHERE material_id = ?",
+        (material_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
     
 def save_questions(material_id, problems):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    for p in problems:
-        p = normalize_problem(p)   # ← ★ この1行を追加
+    valid_count = 0
 
-        if "_warning" in p:
-            st.warning(f"⚠️ 問題生成警告: {p['_warning']}")
-            
+    for p in problems:
+        try:
+            p = normalize_problem(p)
+        except Exception as e:
+            st.warning(f"⚠️ 不正な問題を除外しました: {e}")
+            continue
+
         c.execute("""
         INSERT INTO questions
         (material_id, topic, question, choices_json, correct, explanation)
@@ -488,9 +481,14 @@ def save_questions(material_id, problems):
             p["correct"],
             p["explanation"]
         ))
+        valid_count += 1
 
     conn.commit()
     conn.close()
+
+    if valid_count == 0:
+        raise ValueError("有効な問題が1問もありませんでした")
+
 
     
 def main():
@@ -507,8 +505,6 @@ def main():
         st.session_state.problems = []
     if "idx" not in st.session_state:
         st.session_state.idx = 0
-    if "answered" not in st.session_state:
-        st.session_state.answered = False
     if "answered_idx" not in st.session_state:
         st.session_state.answered_idx = {}
     if "is_correct_idx" not in st.session_state:
@@ -523,17 +519,23 @@ def main():
             "資料をアップロード",
             type=["pdf", "docx", "xlsx", "pptx"]
         )
+
         if file:
             with st.spinner("資料解析中..."):
-                material_id, _ = get_or_create_material(file)
+                data = file.read()
+
+                material_id = get_or_create_material(file.name, data)
                 st.session_state.material_id = material_id
-                file.seek(0)
-                st.session_state.text = extract_text(file)
+
+                st.session_state.text = extract_text_from_bytes(data, file.name)
+
             st.success("資料を読み込みました")
+
 
             if st.button("AI問題を生成"):
                 try:
                     with st.spinner("問題生成中..."):
+                        delete_questions_by_material(st.session_state.material_id)
                         chunks = chunk_text(st.session_state.text)
 
                         retrieved = retrieve_relevant_chunks(
@@ -553,7 +555,7 @@ def main():
                         # ① DB保存
                         save_questions(st.session_state.material_id, problems)
                         # ② DBから読み直す
-                        conn = sqlite3.connect(DB_FILE)
+                        conn = sqlite3.connect(DB_FILE, timeout=30)
                         df = pd.read_sql(
                             """
                             SELECT * FROM questions
@@ -612,8 +614,9 @@ def main():
             st.success("🎉 すべての問題が終了しました！")
 
             df = get_stats()
-            correct = df["is_correct"].sum() if not df.empty else 0
-            st.write(f"正解数: {correct} / {len(st.session_state.problems)}")
+            correct = sum(st.session_state.is_correct_idx.values())
+            total = len(st.session_state.problems)
+            st.write(f"正解数: {correct} / {total}")
 
             if st.button("もう一度最初から"):
                 st.session_state.idx = 0
@@ -633,7 +636,7 @@ def main():
             "選択肢",
             options=list(choices.keys()),
             format_func=lambda x: f"{x}: {choices[x]}",
-            key=f"choice_{st.session_state.idx}"
+            key=f"choice_{p['id']}"
         )
 
 
@@ -648,6 +651,7 @@ def main():
                 st.session_state.is_correct_idx[st.session_state.idx] = is_correct
 
                 student_id = get_or_create_student(student_key)
+                df = get_stats(student_id)
 
                 # ★ 修正ポイント：存在しない is_correct を参照しない
                 log_answer(student_id, p["id"], is_correct)
@@ -698,6 +702,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
