@@ -346,63 +346,112 @@ def generate_ai_problems(text, n=3):
     return problems
 
    
-def get_ai_coaching_message(df):
+def get_ai_coaching_message(df, recent_n=5):
+    """
+    5問ごとの通常コーチング
+    ・よくある誤解
+    ・暗記か理解かを明示
+    """
     if df.empty:
-        return "まだ学習履歴がありません。"
+        return ""
 
-    # 分野別統計
+    # --- 累積統計 ---
+    total_stats = df.groupby("topic").agg(
+        正解数=("is_correct", "sum"),
+        回答数=("id", "count")
+    )
+    total_stats["正答率"] = total_stats["正解数"] / total_stats["回答数"]
+
+    # --- 直近 n 問 ---
+    recent_df = df.tail(recent_n)
+    recent_stats = recent_df.groupby("topic").agg(
+        正解数=("is_correct", "sum"),
+        回答数=("id", "count")
+    )
+    recent_stats["正答率"] = recent_stats["正解数"] / recent_stats["回答数"]
+
+    prompt = f"""
+あなたは薬剤師国家試験の学習を支援するコーチです。
+
+以下は【直近{recent_n}問】の分野別成績です。
+{recent_stats.to_csv()}
+
+以下は【これまで全体】の分野別成績です。
+{total_stats.to_csv()}
+
+この情報をもとに、
+・直近で目立った誤解や混同しやすいポイント
+・その分野は「暗記重視」か「理解重視」か
+を中心に、穏やかなコーチ口調で簡潔に述べてください。
+
+【注意】
+・叱責は禁止
+・前向きな助言にする
+・挨拶文は不要
+"""
+
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    response = model.generate_content(
+        prompt,
+        generation_config={"temperature": 0.2, "max_output_tokens": 600}
+    )
+
+    return response.text
+
+def get_ai_final_coaching_message(df):
+    """
+    全問終了時の最終コーチング
+    ・数値を明示
+    ・成長を言語化
+    ・継続の動機づけ
+    """
+    if df.empty:
+        return ""
+
+    total_answered = len(df)
+    total_correct = df["is_correct"].sum()
+    total_rate = total_correct / total_answered
+
     stats = df.groupby("topic").agg(
         正解数=("is_correct", "sum"),
         回答数=("id", "count")
     )
     stats["正答率"] = stats["正解数"] / stats["回答数"]
-    stats_csv = stats.sort_values("正答率").to_csv()
-
-    # --- RAG: 教材から学習指導に関連する部分を抽出 ---
-    if "text" in st.session_state and st.session_state.text:
-        chunks = chunk_text(st.session_state.text)
-        retrieved = retrieve_relevant_chunks(
-            chunks,
-            query="薬剤師国家試験 分野別 学習指導 弱点"
-        )
-        context = "\n\n".join(retrieved)
-    else:
-        context = ""
-
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = f"""
-あなたは【薬学教育・国家試験指導を専門とする大学教員】です。
+あなたは薬剤師国家試験の学習を支援するコーチです。
 
-以下は、ある学生の分野別成績です。
-{stats_csv}
+以下は、ある学生の今回の学習結果です。
 
-以下は、対応する教材の抜粋です。
-{context}
+・総回答数: {total_answered}
+・正解数: {total_correct}
+・正答率: {total_rate:.0%}
 
-この情報をもとに、
-・つまずきやすい概念
-・混同しやすいポイント
-・理解を深めるための学習の工夫
-をそれぞれ簡潔かつ具体的に述べてください。
+分野別成績:
+{stats.to_csv()}
 
-【重要】
-・前置きや挨拶は禁止
-・分析から書き始める
+この結果をもとに、
+・今回しっかり取り組めた点
+・理解が定着してきている分野
+・努力が成果につながっている点
+を具体的に示し、学習継続の意欲が高まるような
+前向きで穏やかなコーチングコメントを書いてください。
+
+【注意】
+・叱責や否定は禁止
+・比較は禁止
+・挨拶文は不要
 """
 
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 1000
-            }
-        )
-        return response.text
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    response = model.generate_content(
+        prompt,
+        generation_config={"temperature": 0.3, "max_output_tokens": 700}
+    )
 
-    except Exception as e:
-        return f"❌ AIコーチング生成エラー: {e}"
+    return response.text
+
+   
 
 
 
@@ -682,9 +731,31 @@ def main():
             else:
                 st.error(f"不正解です。正解は {p['correct']} です。")
                 
+            # --- 解説 ---
             st.markdown("### 解説")
             st.markdown(p["explanation"])
 
+            # --- 解答数 ---
+            answered_count = len(st.session_state.is_correct_idx)
+
+            student_id = get_or_create_student(student_key)
+            df = get_stats(student_id)
+
+            # ===== 5問ごとの通常コーチング =====
+            if answered_count > 0 and answered_count % 5 == 0 and answered_count < len(st.session_state.problems):
+                st.markdown("---")
+                st.markdown("### 🔍 今回の5問の振り返り")
+                msg = get_ai_coaching_message(df, recent_n=5)
+                st.info(msg)
+
+            # ===== 最後の称賛コーチング =====
+            if answered_count == len(st.session_state.problems):
+                st.markdown("---")
+                st.markdown("### 🎉 今回の学習のまとめ")
+                final_msg = get_ai_final_coaching_message(df)
+                st.success(final_msg)
+
+            
             # --- 次の問題へ ---
             if st.button("次の問題へ"):
                 st.session_state.idx += 1
@@ -714,6 +785,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
