@@ -154,18 +154,25 @@ def chunk_text(text, size=500, overlap=100):
     if overlap >= size:
         raise ValueError("overlap must be smaller than size")
 
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + size
+        chunks.append(text[start:end])
+        start += size - overlap
     return chunks
 
+
 def retrieve_relevant_chunks(chunks, query, top_k=3):
-    vec = TfidfVectorizer(
-        token_pattern=r"(?u)\b\w+\b",
-        max_df=0.9
-    )
     if not chunks:
         return []
+
+    vec = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b", max_df=0.9)
+    X = vec.fit_transform(chunks + [query])
     sims = cosine_similarity(X[-1], X[:-1])[0]
     idx = sims.argsort()[-top_k:][::-1]
     return [chunks[i] for i in idx]
+
 
 
 def extract_from_pdf(data):
@@ -535,7 +542,10 @@ def main():
             if st.button("AI問題を生成"):
                 try:
                     with st.spinner("問題生成中..."):
-                        delete_questions_by_material(st.session_state.material_id)
+                        if "material_id" not in st.session_state:
+                            st.error("資料が読み込まれていません")
+                            return
+
                         chunks = chunk_text(st.session_state.text)
 
                         retrieved = retrieve_relevant_chunks(
@@ -555,7 +565,7 @@ def main():
                         # ① DB保存
                         save_questions(st.session_state.material_id, problems)
                         # ② DBから読み直す
-                        conn = sqlite3.connect(DB_FILE, timeout=30)
+                        conn = sqlite3.connect(DB_FILE, timeout=30, check_same_thread=False)
                         df = pd.read_sql(
                             """
                             SELECT * FROM questions
@@ -613,14 +623,13 @@ def main():
         if st.session_state.problems and st.session_state.idx >= len(st.session_state.problems):
             st.success("🎉 すべての問題が終了しました！")
 
-            df = get_stats()
+            df = get_stats(student_id)
             correct = sum(st.session_state.is_correct_idx.values())
             total = len(st.session_state.problems)
             st.write(f"正解数: {correct} / {total}")
 
             if st.button("もう一度最初から"):
                 st.session_state.idx = 0
-                st.session_state.answered = False
                 st.rerun()
             return
             
@@ -682,7 +691,7 @@ def main():
 
     # ---------- コーチング ----------
     with tab3:
-        df = get_stats()
+        df = get_stats(student_id)
         if df.empty:
             st.info("学習履歴がありません")
         else:
@@ -702,6 +711,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
