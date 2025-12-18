@@ -56,7 +56,6 @@ def init_db():
     """)
 
     c.execute("""
-    
     CREATE TABLE IF NOT EXISTS answers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         student_id INTEGER,
@@ -65,11 +64,22 @@ def init_db():
         answered_at TEXT,
         misconception_note TEXT
     )
-
     """)
+
+    def ensure_misconception_column():
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(answers)")
+        cols = [row[1] for row in c.fetchall()]
+        if "misconception_note" not in cols:
+            c.execute("ALTER TABLE answers ADD COLUMN misconception_note TEXT")
+            conn.commit()
+        conn.close()
+
 
     conn.commit()
     conn.close()
+    ensure_misconception_column()
 
 def calc_file_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -857,6 +867,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
