@@ -588,9 +588,7 @@ def main():
         if st.session_state.idx < 0:
             st.session_state.idx = 0
 
-        if st.session_state.idx >= len(st.session_state.problems):
-            st.session_state.idx = 0
-
+        
         if not st.session_state.problems and "material_id" in st.session_state:
             conn = sqlite3.connect(DB_FILE)
             df = pd.read_sql(
@@ -668,8 +666,9 @@ def main():
                 st.success("正解です 🎉")
             else:
                 st.error(f"不正解です。正解は {p['correct']} です。")
-                st.markdown("### 解説")
-                st.markdown(p["explanation"])
+                
+            st.markdown("### 解説")
+            st.markdown(p["explanation"])
 
             # --- 次の問題へ ---
             if st.button("次の問題へ"):
@@ -699,6 +698,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
