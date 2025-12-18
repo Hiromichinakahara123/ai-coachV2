@@ -622,8 +622,10 @@ def main():
     # --- 全問終了 ---
         if st.session_state.problems and st.session_state.idx >= len(st.session_state.problems):
             st.success("🎉 すべての問題が終了しました！")
-
+            
+            student_id = get_or_create_student(student_key)
             df = get_stats(student_id)
+            
             correct = sum(st.session_state.is_correct_idx.values())
             total = len(st.session_state.problems)
             st.write(f"正解数: {correct} / {total}")
@@ -691,6 +693,7 @@ def main():
 
     # ---------- コーチング ----------
     with tab3:
+        student_id = get_or_create_student(student_key)
         df = get_stats(student_id)
         if df.empty:
             st.info("学習履歴がありません")
@@ -711,6 +714,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
