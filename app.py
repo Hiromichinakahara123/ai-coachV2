@@ -56,13 +56,16 @@ def init_db():
     """)
 
     c.execute("""
+    
     CREATE TABLE IF NOT EXISTS answers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         student_id INTEGER,
         question_id INTEGER,
         is_correct INTEGER,
-        answered_at TEXT
+        answered_at TEXT,
+        misconception_note TEXT
     )
+
     """)
 
     conn.commit()
@@ -854,6 +857,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
