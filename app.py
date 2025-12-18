@@ -653,6 +653,8 @@ def main():
 
                 # ★ 修正ポイント：存在しない is_correct を参照しない
                 log_answer(student_id, p["id"], is_correct)
+                
+                st.rerun()
 
 
 
@@ -673,10 +675,6 @@ def main():
             if st.button("次の問題へ"):
                 st.session_state.idx += 1
                 st.rerun()
-
-
-
-
 
 
     # ---------- コーチング ----------
@@ -701,6 +699,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
