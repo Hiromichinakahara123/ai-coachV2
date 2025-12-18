@@ -569,6 +569,8 @@ def main():
                                          
                     st.session_state.idx = 0
                     st.session_state.answered = False
+                    st.session_state.answered_idx = {}
+                    st.session_state.is_correct_idx = {}
                     st.success("問題を生成しました")
                     st.rerun()
 
@@ -655,14 +657,17 @@ def main():
 
 
         # --- 解答後表示 ---
-        is_correct = st.session_state.is_correct_idx.get(st.session_state.idx, False)
-        if is_correct:
-            st.success("正解です 🎉")
-        else:
-            st.error(f"不正解です。正解は {p['correct']} です。")
+       answered = st.session_state.answered_idx.get(st.session_state.idx, False)
 
-            st.markdown("### 解説")
-            st.markdown(p["explanation"])
+       if answered:
+            is_correct = st.session_state.is_correct_idx.get(st.session_state.idx, False)
+
+            if is_correct:
+                st.success("正解です 🎉")
+            else:
+                st.error(f"不正解です。正解は {p['correct']} です。")
+                st.markdown("### 解説")
+                st.markdown(p["explanation"])
 
             # --- 次の問題へ ---
             if st.button("次の問題へ"):
@@ -696,6 +701,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
