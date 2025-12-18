@@ -101,23 +101,25 @@ def get_or_create_material(file_name: str, data: bytes):
     return material_id
 
 
-def log_answer(student_id, question_id, is_correct):
+def log_answer(student_id, question_id, is_correct, misconception_note=None):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
     c.execute("""
     INSERT INTO answers
-    (student_id, question_id, is_correct, answered_at)
-    VALUES (?, ?, ?, ?)
+    (student_id, question_id, is_correct, answered_at, misconception_note)
+    VALUES (?, ?, ?, ?, ?)
     """, (
         student_id,
         question_id,
         int(is_correct),
-        datetime.now(ZoneInfo("Asia/Tokyo")).isoformat()
+        datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
+        misconception_note
     ))
 
     conn.commit()
     conn.close()
+
     
 def get_stats(student_id):
     conn = sqlite3.connect(DB_FILE)
@@ -344,6 +346,59 @@ def generate_ai_problems(text, n=3):
         p = generate_one_ai_problem(text, i + 1)
         problems.append(p)
     return problems
+
+def generate_misconception_note(
+    topic: str,
+    question: str,
+    choices: dict,
+    correct: str,
+    selected: str
+) -> str | None:
+    """
+    誤答時の「学問的つまずきの示唆」を1文で生成
+    ※ 内部ログ専用（学生非表示）
+    """
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
+    prompt = f"""
+以下は薬剤師国家試験形式の問題です。
+
+分野: {topic}
+問題文:
+{question}
+
+選択肢:
+{json.dumps(choices, ensure_ascii=False)}
+
+正解: {correct}
+学生の選択: {selected}
+
+この誤答から考えられる
+「学習上のつまずき」を
+【1文のみ】で述べてください。
+
+【重要】
+・断定は禁止
+・「〜の可能性があります」など可能性表現を用いる
+・評価・叱責・診断語は禁止
+・学問的内容に限定する
+"""
+
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.2,
+                "max_output_tokens": 100
+            }
+        )
+        text = response.text.strip()
+        if text:
+            return text
+    except Exception:
+        pass
+
+    return None
 
    
 def get_ai_coaching_message(df, recent_n=5):
@@ -706,17 +761,31 @@ def main():
             if st.button("解答する"):
                 st.session_state.answered_idx[st.session_state.idx] = True
 
-                # ★ 正誤判定を変数に保持
                 is_correct = (choice == p["correct"])
                 st.session_state.is_correct_idx[st.session_state.idx] = is_correct
 
                 student_id = get_or_create_student(student_key)
-                df = get_stats(student_id)
 
-                # ★ 修正ポイント：存在しない is_correct を参照しない
-                log_answer(student_id, p["id"], is_correct)
-                
+            # --- 誤答時のみ学問的示唆を生成 ---
+                misconception_note = None
+                if not is_correct:
+                    misconception_note = generate_misconception_note(
+                        topic=p["topic"],
+                        question=p["question"],
+                        choices=json.loads(p["choices_json"]),
+                        correct=p["correct"],
+                        selected=choice
+                    )
+
+                log_answer(
+                    student_id,
+                    p["id"],
+                    is_correct,
+                    misconception_note
+                )
+
                 st.rerun()
+
 
 
 
@@ -785,6 +854,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
