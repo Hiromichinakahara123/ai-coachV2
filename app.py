@@ -659,9 +659,9 @@ def main():
 
 
         # --- 解答後表示 ---
-       answered = st.session_state.answered_idx.get(st.session_state.idx, False)
-
-       if answered:
+        answered = st.session_state.answered_idx.get(st.session_state.idx, False)
+        
+        if answered:
             is_correct = st.session_state.is_correct_idx.get(st.session_state.idx, False)
 
             if is_correct:
@@ -699,6 +699,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
