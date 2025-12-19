@@ -9,6 +9,7 @@ import json
 import io
 import hashlib
 import requests
+import time
 
 # ---------- File parsing ----------
 import pypdf
@@ -21,6 +22,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 # =====================================================
 # Hugging Face / Gemma API
 # =====================================================
+
+import time
 
 def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
     hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
@@ -42,14 +45,26 @@ def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
         }
     }
 
-    r = requests.post(API_URL, headers=headers, json=payload, timeout=120)
-    r.raise_for_status()
-    data = r.json()
+    for attempt in range(6):  # 最大 約2分待つ
+        r = requests.post(API_URL, headers=headers, json=payload, timeout=120)
 
-    if isinstance(data, list) and data and "generated_text" in data[0]:
-        return data[0]["generated_text"]
+        # --- モデル起動中 ---
+        if r.status_code == 202:
+            data = r.json()
+            wait = int(data.get("estimated_time", 20))
+            time.sleep(min(wait, 20))
+            continue
 
-    raise ValueError(f"Unexpected HF response: {data}")
+        r.raise_for_status()
+        data = r.json()
+
+        if isinstance(data, list) and data and "generated_text" in data[0]:
+            return data[0]["generated_text"]
+
+        raise ValueError(f"Unexpected HF response: {data}")
+
+    raise RuntimeError("モデルの起動に時間がかかりすぎています")
+
 
 
 # =====================================================
@@ -312,3 +327,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
