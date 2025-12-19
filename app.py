@@ -288,7 +288,7 @@ def safe_json_load(text: str):
                 raise ValueError(f"JSON解析失敗: 構造が壊れています。\n\n--- 抽出JSON ---\n{json_text}")
 
 def generate_one_ai_problem(text, problem_no):
-    model = genai.GenerativeModel("gemini-flash-lite-latest")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = f"""
 以下の資料をもとに、薬剤師国家試験形式の五肢択一問題を1問作成してください。
@@ -371,8 +371,8 @@ def generate_misconception_note(
     誤答時の「学問的つまずきの示唆」を1文で生成
     ※ 内部ログ専用（学生非表示）
     """
-    model = genai.GenerativeModel("gemini-flash-lite-latest")
-#gemini-2.5-flash-lite
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
     prompt = f"""
 以下は薬剤師国家試験形式の問題です。
 
@@ -458,7 +458,7 @@ def get_ai_coaching_message(df, recent_n=5):
 ・挨拶文は不要
 """
 
-    model = genai.GenerativeModel("gemini-flash-lite-latest")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
     response = model.generate_content(
         prompt,
         generation_config={"temperature": 0.2, "max_output_tokens": 600}
@@ -511,7 +511,7 @@ def get_ai_final_coaching_message(df):
 ・挨拶文は不要
 """
 
-    model = genai.GenerativeModel("gemini-flash-lite-latest")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
     response = model.generate_content(
         prompt,
         generation_config={"temperature": 0.3, "max_output_tokens": 700}
@@ -867,6 +867,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
