@@ -9,6 +9,7 @@ import json
 import io
 import hashlib
 import google.generativeai as genai
+import requests
 
 # ---------- File parsing ----------
 import pypdf
@@ -16,6 +17,38 @@ from docx import Document
 from pptx import Presentation
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
+    hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
+    if not hf_token:
+        raise RuntimeError("HF_TOKEN が設定されていません")
+
+    API_URL = "https://api-inference.huggingface.co/models/google/gemma-3-4b-it"
+    headers = {
+        "Authorization": f"Bearer {hf_token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": max_tokens,
+            "temperature": temperature,
+            "return_full_text": False
+        }
+    }
+
+    r = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+    r.raise_for_status()
+    data = r.json()
+
+    if isinstance(data, list) and "generated_text" in data[0]:
+        return data[0]["generated_text"]
+
+    raise ValueError(f"Unexpected HF response: {data}")
+
+
+
 
 # =====================================================
 # DB
@@ -867,6 +900,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
