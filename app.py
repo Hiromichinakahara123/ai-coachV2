@@ -20,14 +20,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
     hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
-    if not hf_token:
-        raise RuntimeError("HF_TOKEN が設定されていません")
+    model_id = st.secrets.get("HF_MODEL") or os.getenv("HF_MODEL")
 
-    API_URL = "https://api-inference.huggingface.co/models/google/gemma-2-2b-it"
-    headers = {
-        "Authorization": f"Bearer {hf_token}",
-        "Content-Type": "application/json"
-    }
+    if not hf_token or not model_id:
+        raise RuntimeError("HF_TOKEN または HF_MODEL が未設定です")
+
+    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    headers = {"Authorization": f"Bearer {hf_token}"}
 
     payload = {
         "inputs": prompt,
@@ -38,14 +37,18 @@ def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
         }
     }
 
-    r = requests.post(API_URL, headers=headers, json=payload, timeout=120)
-    r.raise_for_status()
+    r = requests.post(api_url, headers=headers, json=payload, timeout=120)
+
+    if not r.ok:
+        raise RuntimeError(f"HF error {r.status_code}: {r.text}")
+
     data = r.json()
 
-    if isinstance(data, list) and "generated_text" in data[0]:
+    if isinstance(data, list) and data and "generated_text" in data[0]:
         return data[0]["generated_text"]
 
-    raise ValueError(f"Unexpected HF response: {data}")
+    raise RuntimeError(f"Unexpected HF response: {data}")
+
 
 
 
@@ -866,6 +869,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
