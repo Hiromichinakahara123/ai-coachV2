@@ -636,7 +636,9 @@ def repair_problem(p: dict) -> dict:
         p["explanation"] = "資料内容に基づき正解肢が妥当であるため。"
 
     return p
-
+    
+delete_questions_by_material(st.session_state.material_id)
+save_questions(...)
 
 def save_questions(material_id, problems):
     conn = get_conn()
@@ -747,7 +749,6 @@ def main():
                         st.session_state.problems = df.to_dict("records")
                                          
                     st.session_state.idx = 0
-                    st.session_state.answered = False
                     st.session_state.answered_idx = {}
                     st.session_state.is_correct_idx = {}
                     st.success("問題を生成しました")
@@ -900,6 +901,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
