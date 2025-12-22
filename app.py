@@ -557,7 +557,6 @@ def get_ai_final_coaching_message(df):
 # =====================================================
 # UI
 # =====================================================
-student_key = st.text_input("学籍番号またはニックネーム")
 def normalize_problem(p: dict) -> dict:
     required = ["topic", "question", "choices", "correct", "explanation"]
     missing = [k for k in required if k not in p]
@@ -836,6 +835,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
