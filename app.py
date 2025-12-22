@@ -321,8 +321,6 @@ def safe_json_load(text: str):
                 raise ValueError(f"JSON解析失敗: 構造が壊れています。\n\n--- 抽出JSON ---\n{json_text}")
 
 def generate_one_ai_problem(text, problem_no):
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
-
     prompt = f"""
 以下の資料をもとに、薬剤師国家試験形式の五肢択一問題を1問作成してください。
 
@@ -358,31 +356,13 @@ def generate_one_ai_problem(text, problem_no):
 {text}
 """
 
-    response = model.generate_content(
-        prompt,
-        generation_config={
-            "temperature": 0.1,
-            "max_output_tokens": 500
-        }
-    )
-
-    if not response.candidates:
-        raise ValueError("Geminiが応答を返しませんでした")
-
-    c = response.candidates[0]
-    if not c.content or not c.content.parts:
-        raise ValueError(f"Gemini出力が空です (finish_reason={c.finish_reason})")
-
-    raw = c.content.parts[0].text
+    raw = hf_generate(prompt, max_tokens=500, temperature=0.1)
     data = safe_json_load(raw)
 
-    # Geminiが配列で返してきた場合にも対応
     if isinstance(data, list):
         if not data:
-            raise ValueError("Geminiが空配列を返しました")
+            raise ValueError("HFが空配列を返しました")
         return data[0]
-
-    # オブジェクトで返してきた場合
     return data
 
     
@@ -404,8 +384,6 @@ def generate_misconception_note(
     誤答時の「学問的つまずきの示唆」を1文で生成
     ※ 内部ログ専用（学生非表示）
     """
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
-
     prompt = f"""
 以下は薬剤師国家試験形式の問題です。
 
@@ -419,9 +397,7 @@ def generate_misconception_note(
 正解: {correct}
 学生の選択: {selected}
 
-この誤答から考えられる
-「学習上のつまずき」を
-【1文のみ】で述べてください。
+この誤答から考えられる「学習上のつまずき」を【1文のみ】で述べてください。
 
 【重要】
 ・断定は禁止
@@ -431,20 +407,10 @@ def generate_misconception_note(
 """
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 100
-            }
-        )
-        text = response.text.strip()
-        if text:
-            return text
+        text = hf_generate(prompt, max_tokens=120, temperature=0.2).strip()
+        return text or None
     except Exception:
-        pass
-
-    return None
+        return None
 
    
 def get_ai_coaching_message(df, recent_n=5):
@@ -491,13 +457,7 @@ def get_ai_coaching_message(df, recent_n=5):
 ・挨拶文は不要
 """
 
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
-    response = model.generate_content(
-        prompt,
-        generation_config={"temperature": 0.2, "max_output_tokens": 600}
-    )
-
-    return response.text
+    return hf_generate(prompt, max_tokens=600, temperature=0.2).strip()
 
 def get_ai_final_coaching_message(df):
     """
@@ -649,12 +609,21 @@ def save_questions(material_id, problems):
 
     
 def main():
+    init_db()
+    if not configure_hf():
+        return
+
     st.set_page_config("AIコーチング学習アプリ", layout="centered")
     st.title("📚 AIコーチング学習アプリ")
 
     init_db()
-    if not configure_gemini():
-        return
+    def configure_hf():
+        hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
+        if not hf_token:
+            st.error("❌ HF_TOKEN が設定されていません")
+            return False
+        return True
+
 
     if "text" not in st.session_state:
         st.session_state.text = None
@@ -900,6 +869,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
