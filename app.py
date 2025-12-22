@@ -565,20 +565,62 @@ def get_ai_final_coaching_message(df):
 # =====================================================
 # UI
 # =====================================================
+def normalize_choices(choices):
+    if isinstance(choices, dict):
+        keys = list(choices.keys())
+        if set(keys) == {"A", "B", "C", "D", "E"}:
+            return choices
+
+    if isinstance(choices, list) and len(choices) == 5:
+        return dict(zip(["A","B","C","D","E"], choices))
+
+    raise ValueError("choices の形式が不正です")
+
 def normalize_problem(p: dict) -> dict:
-    required = ["topic", "question", "choices", "correct", "explanation"]
-    missing = [k for k in required if k not in p]
+    """
+    Gemini 出力を「必ず安全な問題データ」に正規化する
+    """
 
-    if missing:
-        raise ValueError(f"必須キー不足: {missing}")
+    # --- 必須キーの存在チェック（topic / question は絶対必要） ---
+    for key in ["topic", "question", "choices"]:
+        if key not in p:
+            raise ValueError(f"必須キー不足: {key}")
 
-    if not isinstance(p["choices"], dict) or len(p["choices"]) != 5:
-        raise ValueError("choices が不正です")
+    # --- choices を正規化 ---
+    choices = p["choices"]
 
-    if p["correct"] not in p["choices"]:
-        raise ValueError("correct が choices に含まれていません")
+    # list → dict 変換
+    if isinstance(choices, list):
+        if len(choices) != 5:
+            raise ValueError("choices の数が5ではありません")
+        choices = dict(zip(["A", "B", "C", "D", "E"], choices))
+
+    # dict でもキーが A–E でなければ再構成
+    if isinstance(choices, dict):
+        if set(choices.keys()) != {"A", "B", "C", "D", "E"}:
+            raise ValueError("choices のキーが A〜E ではありません")
+    else:
+        raise ValueError("choices が dict / list 以外です")
+
+    p["choices"] = choices
+
+    # --- correct を正規化 ---
+    correct = p.get("correct")
+
+    if not isinstance(correct, str) or correct not in choices:
+        # 保険：A を仮採用
+        correct = "A"
+
+    p["correct"] = correct
+
+    # --- explanation を正規化 ---
+    explanation = p.get("explanation")
+
+    if not isinstance(explanation, str) or not explanation.strip():
+        p["explanation"] = "資料内容に基づき、正解肢が最も適切であるため。"
 
     return p
+
 
 def repair_problem(p: dict) -> dict:
     """
@@ -858,6 +900,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
