@@ -43,13 +43,20 @@ def get_conn():
     Streamlit上でコネクションを使い回す（過剰接続を防ぐ）
     """
     return psycopg2.connect(
-        st.secrets["DATABASE_URL"],
+        st.secrets["postgresql://postgres:HcmwGMfF.3J+kvx@db.nberrdusqtxmvzpcfrmk.supabase.co:5432/postgres"],
         cursor_factory=psycopg2.extras.RealDictCursor,
         connect_timeout=10,
     )
 
 
 def init_db():
+    try:
+        conn = get_conn()
+    except Exception as e:
+        st.error("❌ DBに接続できません")
+        st.exception(e)
+        st.stop()
+
     conn = get_conn()
     c = conn.cursor()
 
@@ -829,6 +836,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
