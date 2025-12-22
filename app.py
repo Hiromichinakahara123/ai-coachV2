@@ -9,7 +9,6 @@ import json
 import io
 import hashlib
 import google.generativeai as genai
-import requests
 
 # ---------- File parsing ----------
 import pypdf
@@ -18,9 +17,6 @@ from pptx import Presentation
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
-    hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
-    model_id = st.secrets.get("HF_MODEL") or os.getenv("HF_MODEL")
 
     if not hf_token or not model_id:
         raise RuntimeError("HF_TOKEN または HF_MODEL が未設定です")
@@ -363,8 +359,19 @@ def generate_one_ai_problem(text, problem_no):
 {text}
 """
 
-    raw = hf_generate(prompt, max_tokens=500, temperature=0.1)
+    model = genai.GenerativeModel(
+        "gemini-1.5-flash",
+        generation_config={
+            "temperature": 0.2,
+            "max_output_tokens": 800,
+        }
+    )
+
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
+
     data = safe_json_load(raw)
+
 
     if isinstance(data, list):
         if not data:
@@ -414,7 +421,8 @@ def generate_misconception_note(
 """
 
     try:
-        text = hf_generate(prompt, max_tokens=120, temperature=0.2).strip()
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        text = model.generate_content(prompt).text.strip()
         return text or None
     except Exception:
         return None
@@ -464,7 +472,9 @@ def get_ai_coaching_message(df, recent_n=5):
 ・挨拶文は不要
 """
 
-    return hf_generate(prompt, max_tokens=600, temperature=0.2).strip()
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    return model.generate_content(prompt).text.strip()
+
 
 def get_ai_final_coaching_message(df):
     """
@@ -613,17 +623,10 @@ def save_questions(material_id, problems):
     if valid_count == 0:
         raise ValueError("有効な問題が1問もありませんでした")
         
-def configure_hf():
-    hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
-    if not hf_token:
-        st.error("❌ HF_TOKEN が設定されていません")
-        return False
-    return True
-
-    
+  
 def main():
     init_db()
-    if not configure_hf():
+    if not configure_gemini():
         return
 
     st.set_page_config("AIコーチング学習アプリ", layout="centered")
@@ -873,6 +876,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
