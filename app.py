@@ -20,7 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 def gemini_generate(prompt: str) -> str:
     model = genai.GenerativeModel(
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
         generation_config={
             "temperature": 0.2,
             "max_output_tokens": 800,
@@ -337,7 +337,7 @@ def generate_one_ai_problem(text, problem_no):
 """
 
     model = genai.GenerativeModel(
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
         generation_config={
             "temperature": 0.2,
             "max_output_tokens": 800,
@@ -398,7 +398,7 @@ def generate_misconception_note(
 """
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash-lite")
         text = model.generate_content(prompt).text.strip()
         return text or None
     except Exception:
@@ -449,7 +449,7 @@ def get_ai_coaching_message(df, recent_n=5):
 ・挨拶文は不要
 """
 
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
     return model.generate_content(prompt).text.strip()
 
 
@@ -853,6 +853,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
