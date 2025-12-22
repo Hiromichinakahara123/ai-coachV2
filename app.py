@@ -605,7 +605,13 @@ def save_questions(material_id, problems):
 
     if valid_count == 0:
         raise ValueError("有効な問題が1問もありませんでした")
-
+        
+def configure_hf():
+    hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
+    if not hf_token:
+        st.error("❌ HF_TOKEN が設定されていません")
+        return False
+    return True
 
     
 def main():
@@ -615,15 +621,6 @@ def main():
 
     st.set_page_config("AIコーチング学習アプリ", layout="centered")
     st.title("📚 AIコーチング学習アプリ")
-
-    init_db()
-    def configure_hf():
-        hf_token = st.secrets.get("HF_TOKEN") or os.getenv("HF_TOKEN")
-        if not hf_token:
-            st.error("❌ HF_TOKEN が設定されていません")
-            return False
-        return True
-
 
     if "text" not in st.session_state:
         st.session_state.text = None
@@ -869,6 +866,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
