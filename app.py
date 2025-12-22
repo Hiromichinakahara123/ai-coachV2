@@ -672,7 +672,7 @@ def main():
                         df = pd.read_sql(
                             """
                             SELECT * FROM questions
-                            WHERE material_id = ?
+                            WHERE material_id = %s
                             ORDER BY id
                             """,
                             conn,
@@ -835,6 +835,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
