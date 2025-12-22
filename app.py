@@ -18,39 +18,16 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-    if not hf_token or not model_id:
-        raise RuntimeError("HF_TOKEN または HF_MODEL が未設定です")
-
-    api_url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
-    headers = {
-        "Authorization": f"Bearer {hf_token}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": max_tokens,
-            "temperature": temperature,
-            "return_full_text": False
+def gemini_generate(prompt: str) -> str:
+    model = genai.GenerativeModel(
+        "gemini-1.5-flash",
+        generation_config={
+            "temperature": 0.2,
+            "max_output_tokens": 800,
         }
-    }
-
-    r = requests.post(api_url, headers=headers, json=payload, timeout=120)
-
-    if not r.ok:
-        raise RuntimeError(f"HF error {r.status_code}: {r.text}")
-
-    data = r.json()
-
-    if isinstance(data, list) and data and "generated_text" in data[0]:
-        return data[0]["generated_text"]
-
-    raise RuntimeError(f"Unexpected HF response: {data}")
-
-
-
-
+    )
+    response = model.generate_content(prompt)
+    return response.text.strip()
 
 
 # =====================================================
@@ -876,6 +853,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
