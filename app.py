@@ -370,22 +370,22 @@ def generate_one_ai_problem(text, problem_no):
 9. 改行は JSON の構造に必要なもののみ許可
 
 【出力フォーマット（厳密一致）】
-{
+{{
   "topic": "分野名",
   "question": "問題文",
-  "choices": {
+  "choices": {{
     "A": "選択肢A",
     "B": "選択肢B",
     "C": "選択肢C",
     "D": "選択肢D",
     "E": "選択肢E"
-  },
+  }},
   "correct": "A",
   "explanation": "解説文"
-}
+}}
 
 【資料】
-{{TEXT}}
+{text}
 """
 
     model = genai.GenerativeModel(
@@ -843,6 +843,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
