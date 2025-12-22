@@ -25,8 +25,11 @@ def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
     if not hf_token or not model_id:
         raise RuntimeError("HF_TOKEN または HF_MODEL が未設定です")
 
-    api_url = f"https://router.huggingface.co/models/{model_id}"
-    headers = {"Authorization": f"Bearer {hf_token}"}
+    api_url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
+    headers = {
+        "Authorization": f"Bearer {hf_token}",
+        "Content-Type": "application/json"
+    }
 
     payload = {
         "inputs": prompt,
@@ -48,6 +51,7 @@ def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
         return data[0]["generated_text"]
 
     raise RuntimeError(f"Unexpected HF response: {data}")
+
 
 
 
@@ -869,6 +873,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
