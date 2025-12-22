@@ -23,7 +23,7 @@ def hf_generate(prompt: str, max_tokens=500, temperature=0.1) -> str:
     if not hf_token:
         raise RuntimeError("HF_TOKEN が設定されていません")
 
-    API_URL = "https://api-inference.huggingface.co/models/google/gemma-3-4b-it"
+    API_URL = "https://api-inference.huggingface.co/models/google/gemma-2-2b-it"
     headers = {
         "Authorization": f"Bearer {hf_token}",
         "Content-Type": "application/json"
@@ -866,6 +866,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
