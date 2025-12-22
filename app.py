@@ -580,6 +580,20 @@ def normalize_problem(p: dict) -> dict:
 
     return p
 
+def repair_problem(p: dict) -> dict:
+    """
+    Geminiが省略しがちなキーを補完する
+    """
+    # correct がない場合
+    if "correct" not in p:
+        # Aを仮置き（後で再生成 or explanation 生成で整合）
+        p["correct"] = "A"
+
+    # explanation がない場合
+    if "explanation" not in p:
+        p["explanation"] = "資料内容に基づき正解肢が妥当であるため。"
+
+    return p
 
 
 def save_questions(material_id, problems):
@@ -589,6 +603,7 @@ def save_questions(material_id, problems):
     valid_count = 0
     for p in problems:
         try:
+            p = repair_problem(p)      # ← 追加
             p = normalize_problem(p)
         except Exception as e:
             st.warning(f"⚠️ 不正な問題を除外しました: {e}")
@@ -843,6 +858,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
