@@ -1,5 +1,4 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -9,6 +8,10 @@ import json
 import io
 import hashlib
 import google.generativeai as genai
+
+# ---------- PostgreSQL ----------
+import psycopg2
+import psycopg2.extras
 
 # ---------- File parsing ----------
 import pypdf
@@ -31,28 +34,39 @@ def gemini_generate(prompt: str) -> str:
 
 
 # =====================================================
-# DB
+# DB (PostgreSQL)
 # =====================================================
 
-DB_FILE = "pk_study_log.db"
+@st.cache_resource
+def get_conn():
+    """
+    Streamlit上でコネクションを使い回す（過剰接続を防ぐ）
+    """
+    return psycopg2.connect(
+        st.secrets["DATABASE_URL"],
+        cursor_factory=psycopg2.extras.RealDictCursor,
+        connect_timeout=10,
+    )
+
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_conn()
     c = conn.cursor()
 
+    # SERIAL=自動採番、TIMESTAMPTZ=タイムゾーン付き
     c.execute("""
     CREATE TABLE IF NOT EXISTS materials (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         title TEXT,
         file_hash TEXT UNIQUE,
-        uploaded_at TEXT
+        uploaded_at TIMESTAMPTZ
     )
     """)
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS questions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        material_id INTEGER,
+        id SERIAL PRIMARY KEY,
+        material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
         topic TEXT,
         question TEXT,
         choices_json TEXT,
@@ -63,92 +77,106 @@ def init_db():
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS students (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         student_key TEXT UNIQUE
     )
     """)
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS answers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id INTEGER,
-        question_id INTEGER,
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+        question_id INTEGER REFERENCES questions(id) ON DELETE CASCADE,
         is_correct INTEGER,
-        answered_at TEXT,
+        answered_at TIMESTAMPTZ,
         misconception_note TEXT
     )
     """)
 
-    def ensure_misconception_column():
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("PRAGMA table_info(answers)")
-        cols = [row[1] for row in c.fetchall()]
-        if "misconception_note" not in cols:
-            c.execute("ALTER TABLE answers ADD COLUMN misconception_note TEXT")
-            conn.commit()
-        conn.close()
-
-
     conn.commit()
-    conn.close()
-    ensure_misconception_column()
+
 
 def calc_file_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
+
 def get_or_create_material(file_name: str, data: bytes):
     file_hash = calc_file_hash(data)
 
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_conn()
     c = conn.cursor()
 
     c.execute(
-        "SELECT id FROM materials WHERE file_hash = ?",
+        "SELECT id FROM materials WHERE file_hash = %s",
         (file_hash,)
     )
     row = c.fetchone()
 
     if row:
-        material_id = row[0]
+        material_id = row["id"]
     else:
         c.execute(
-            "INSERT INTO materials (title, file_hash, uploaded_at) VALUES (?, ?, ?)",
+            """
+            INSERT INTO materials (title, file_hash, uploaded_at)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
             (
                 file_name,
                 file_hash,
-                datetime.now(ZoneInfo("Asia/Tokyo")).isoformat()
+                datetime.now(ZoneInfo("Asia/Tokyo")),
             )
         )
-        material_id = c.lastrowid
+        material_id = c.fetchone()["id"]
         conn.commit()
 
-    conn.close()
     return material_id
 
 
+def get_or_create_student(student_key):
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute(
+        "SELECT id FROM students WHERE student_key = %s",
+        (student_key,)
+    )
+    row = c.fetchone()
+
+    if row:
+        student_id = row["id"]
+    else:
+        c.execute(
+            "INSERT INTO students (student_key) VALUES (%s) RETURNING id",
+            (student_key,)
+        )
+        student_id = c.fetchone()["id"]
+        conn.commit()
+
+    return student_id
+
+
 def log_answer(student_id, question_id, is_correct, misconception_note=None):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_conn()
     c = conn.cursor()
 
     c.execute("""
     INSERT INTO answers
     (student_id, question_id, is_correct, answered_at, misconception_note)
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (%s, %s, %s, %s, %s)
     """, (
         student_id,
         question_id,
         int(is_correct),
-        datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
+        datetime.now(ZoneInfo("Asia/Tokyo")),
         misconception_note
     ))
 
     conn.commit()
-    conn.close()
 
-    
+
 def get_stats(student_id):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_conn()
     df = pd.read_sql("""
         SELECT
             a.id,
@@ -156,10 +184,21 @@ def get_stats(student_id):
             a.is_correct
         FROM answers a
         JOIN questions q ON a.question_id = q.id
-        WHERE a.student_id = ?
+        WHERE a.student_id = %s
+        ORDER BY a.id
     """, conn, params=(student_id,))
-    conn.close()
     return df
+
+
+def delete_questions_by_material(material_id):
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute(
+        "DELETE FROM questions WHERE material_id = %s",
+        (material_id,)
+    )
+    conn.commit()
 
 
 # =====================================================
@@ -281,24 +320,22 @@ def safe_json_load(text: str):
     end_arr = text.rfind("]")
     end = max(end_obj, end_arr)
 
-    # 閉じカッコが見つからない場合、文字列の最後までを対象とする
     if end == -1 or end <= start:
         json_text = text[start:].strip()
     else:
         json_text = text[start:end + 1].strip()
 
-    # 3. 解析を試み、失敗したら閉じカッコを補完してリトライ
     try:
         return json.loads(json_text)
     except json.JSONDecodeError:
         try:
-            # 強引に閉じカッコを付け足してみる（単純な生成中断対策）
             return json.loads(json_text + "}")
         except:
             try:
-                return json.loads(json_text + "]}") # ネスト対策
+                return json.loads(json_text + "]}")
             except:
                 raise ValueError(f"JSON解析失敗: 構造が壊れています。\n\n--- 抽出JSON ---\n{json_text}")
+
 
 def generate_one_ai_problem(text, problem_no):
     prompt = f"""
@@ -352,7 +389,7 @@ def generate_one_ai_problem(text, problem_no):
 
     if isinstance(data, list):
         if not data:
-            raise ValueError("HFが空配列を返しました")
+            raise ValueError("Geminiが空配列を返しました")
         return data[0]
     return data
 
@@ -531,48 +568,11 @@ def normalize_problem(p: dict) -> dict:
 
 
 
-def get_or_create_student(student_key):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    c.execute(
-        "SELECT id FROM students WHERE student_key = ?",
-        (student_key,)
-    )
-    row = c.fetchone()
-
-    if row:
-        student_id = row[0]
-    else:
-        c.execute(
-            "INSERT INTO students (student_key) VALUES (?)",
-            (student_key,)
-        )
-        student_id = c.lastrowid
-        conn.commit()
-
-    conn.close()
-    return student_id
-
-def delete_questions_by_material(material_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    c.execute(
-        "DELETE FROM questions WHERE material_id = ?",
-        (material_id,)
-    )
-
-    conn.commit()
-    conn.close()
-
-    
 def save_questions(material_id, problems):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_conn()
     c = conn.cursor()
 
     valid_count = 0
-
     for p in problems:
         try:
             p = normalize_problem(p)
@@ -583,7 +583,7 @@ def save_questions(material_id, problems):
         c.execute("""
         INSERT INTO questions
         (material_id, topic, question, choices_json, correct, explanation)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """, (
             material_id,
             p["topic"],
@@ -595,19 +595,19 @@ def save_questions(material_id, problems):
         valid_count += 1
 
     conn.commit()
-    conn.close()
 
     if valid_count == 0:
         raise ValueError("有効な問題が1問もありませんでした")
-        
   
 def main():
+    st.set_page_config("AIコーチング学習アプリ", layout="centered")
+    st.title("📚 AIコーチング学習アプリ")
+
     init_db()
     if not configure_gemini():
         return
 
-    st.set_page_config("AIコーチング学習アプリ", layout="centered")
-    st.title("📚 AIコーチング学習アプリ")
+    student_key = st.text_input("学籍番号またはニックネーム")
 
     if "text" not in st.session_state:
         st.session_state.text = None
@@ -619,7 +619,6 @@ def main():
         st.session_state.answered_idx = {}
     if "is_correct_idx" not in st.session_state:
         st.session_state.is_correct_idx = {}
-
 
     tab1, tab2, tab3 = st.tabs(["資料", "問題演習", "コーチング"])
 
@@ -633,10 +632,8 @@ def main():
         if file:
             with st.spinner("資料解析中..."):
                 data = file.read()
-
                 material_id = get_or_create_material(file.name, data)
                 st.session_state.material_id = material_id
-
                 st.session_state.text = extract_text_from_bytes(data, file.name)
 
             st.success("資料を読み込みました")
@@ -650,16 +647,13 @@ def main():
                             return
 
                         chunks = chunk_text(st.session_state.text)
-
                         retrieved = retrieve_relevant_chunks(
                             chunks,
                             query="薬剤師国家試験の五肢択一問題を作成する"
-)
-
+                        )
                         context = "\n\n".join(retrieved)
 
                         problems = generate_ai_problems(context)
-
                         
                         if not problems:
                             raise ValueError("問題が1問も生成できませんでした（Gemini出力/JSON解析失敗の可能性）")
@@ -668,7 +662,7 @@ def main():
                         # ① DB保存
                         save_questions(st.session_state.material_id, problems)
                         # ② DBから読み直す
-                        conn = sqlite3.connect(DB_FILE, timeout=30, check_same_thread=False)
+                        conn = get_conn()
                         df = pd.read_sql(
                             """
                             SELECT * FROM questions
@@ -678,7 +672,6 @@ def main():
                             conn,
                             params=(st.session_state.material_id,)
                         )
-                        conn.close()
                         # ③ session_state に入れる
                         st.session_state.problems = df.to_dict("records")
                                          
@@ -699,36 +692,31 @@ def main():
             st.warning("学籍番号またはニックネームを入力してください")
             st.stop()
 
-        # --- idx の安全化 ---
         if st.session_state.idx < 0:
             st.session_state.idx = 0
 
-        
-        if not st.session_state.problems and "material_id" in st.session_state:
-            conn = sqlite3.connect(DB_FILE)
+        if (not st.session_state.problems) and ("material_id" in st.session_state):
+            conn = get_conn()
             df = pd.read_sql(
                 """
                 SELECT * FROM questions
-                WHERE material_id = ?
+                WHERE material_id = %s
                 ORDER BY id
                 """,
                 conn,
                 params=(st.session_state.material_id,)
             )
-            conn.close()
             st.session_state.problems = df.to_dict("records")
-            
+
         if not st.session_state.problems:
             st.info("問題がまだありません")
             st.stop()
 
-    # --- 全問終了 ---
-        if st.session_state.problems and st.session_state.idx >= len(st.session_state.problems):
+        if st.session_state.idx >= len(st.session_state.problems):
             st.success("🎉 すべての問題が終了しました！")
-            
             student_id = get_or_create_student(student_key)
             df = get_stats(student_id)
-            
+
             correct = sum(st.session_state.is_correct_idx.values())
             total = len(st.session_state.problems)
             st.write(f"正解数: {correct} / {total}")
@@ -737,13 +725,11 @@ def main():
                 st.session_state.idx = 0
                 st.rerun()
             return
-            
-         # --- 問題表示 ---
+
         p = st.session_state.problems[st.session_state.idx]
         st.subheader(f"問題 {st.session_state.idx + 1}")
         st.markdown(p["question"])
 
-        # --- choices を dict に変換（1問分） ---
         choices = json.loads(p["choices_json"])
 
         choice = st.radio(
@@ -753,8 +739,6 @@ def main():
             key=f"choice_{p['id']}"
         )
 
-
-        # --- 解答する ---
         answered = st.session_state.answered_idx.get(st.session_state.idx, False)
         if not answered:
             if st.button("解答する"):
@@ -765,7 +749,6 @@ def main():
 
                 student_id = get_or_create_student(student_key)
 
-            # --- 誤答時のみ学問的示唆を生成 ---
                 misconception_note = None
                 if not is_correct:
                     misconception_note = generate_misconception_note(
@@ -785,12 +768,7 @@ def main():
 
                 st.rerun()
 
-
-
-
-        # --- 解答後表示 ---
         answered = st.session_state.answered_idx.get(st.session_state.idx, False)
-        
         if answered:
             is_correct = st.session_state.is_correct_idx.get(st.session_state.idx, False)
 
@@ -798,33 +776,26 @@ def main():
                 st.success("正解です 🎉")
             else:
                 st.error(f"不正解です。正解は {p['correct']} です。")
-                
-            # --- 解説 ---
+
             st.markdown("### 解説")
             st.markdown(p["explanation"])
 
-            # --- 解答数 ---
             answered_count = len(st.session_state.is_correct_idx)
-
             student_id = get_or_create_student(student_key)
             df = get_stats(student_id)
 
-            # ===== 5問ごとの通常コーチング =====
             if answered_count > 0 and answered_count % 5 == 0 and answered_count < len(st.session_state.problems):
                 st.markdown("---")
                 st.markdown("### 🔍 今回の5問の振り返り")
                 msg = get_ai_coaching_message(df, recent_n=5)
                 st.info(msg)
 
-            # ===== 最後の称賛コーチング =====
             if answered_count == len(st.session_state.problems):
                 st.markdown("---")
                 st.markdown("### 🎉 今回の学習のまとめ")
                 final_msg = get_ai_final_coaching_message(df)
                 st.success(final_msg)
 
-            
-            # --- 次の問題へ ---
             if st.button("次の問題へ"):
                 st.session_state.idx += 1
                 st.rerun()
@@ -832,8 +803,13 @@ def main():
 
     # ---------- コーチング ----------
     with tab3:
+        if not student_key:
+            st.info("学籍番号またはニックネームを入力してください")
+            st.stop()
+
         student_id = get_or_create_student(student_key)
         df = get_stats(student_id)
+
         if df.empty:
             st.info("学習履歴がありません")
         else:
@@ -853,6 +829,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
